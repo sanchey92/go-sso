@@ -1,0 +1,71 @@
+# Production config
+# All sensitive and environment-specific values MUST be set via env variables.
+# Placeholders below exist only because cleanenv requires non-empty YAML
+# values for env-required fields — they will be overridden at runtime.
+
+server:
+  http:
+    host: "0.0.0.0"
+    port: 8080 # override: SSO_SERVER_HTTP_PORT
+    read_timeout: 15s # override: SSO_SERVER_HTTP_READ_TIMEOUT
+    write_timeout: 30s # override: SSO_SERVER_HTTP_WRITE_TIMEOUT
+  grpc:
+    host: "0.0.0.0"
+    port: 9090 # override: SSO_SERVER_GRPC_PORT
+
+database:
+  postgres:
+    dsn: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_POSTGRES_DSN
+    max_open_conns: 50 # override: SSO_DATABASE_POSTGRES_MAX_OPEN_CONNS
+    max_idle_conns: 25 # override: SSO_DATABASE_POSTGRES_MAX_IDLE_CONNS
+    conn_max_lifetime: 5m # override: SSO_DATABASE_POSTGRES_CONN_MAX_LIFETIME
+  redis:
+    addr: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_REDIS_ADDR
+    password: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_REDIS_PASSWORD
+    db: 0 # override: SSO_DATABASE_REDIS_DB
+
+auth:
+  access_token_ttl: 15m # override: SSO_AUTH_ACCESS_TOKEN_TTL
+  refresh_token_ttl: 168h # override: SSO_AUTH_REFRESH_TOKEN_TTL
+  issuer: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_AUTH_ISSUER
+  jwt_signing_algorithm: "EdDSA" # override: SSO_AUTH_JWT_SIGNING_ALGORITHM
+
+federation:
+  google:
+    client_id: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GOOGLE_CLIENT_ID
+    client_secret: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GOOGLE_CLIENT_SECRET
+    redirect_url: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GOOGLE_REDIRECT_URL
+  github:
+    client_id: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GITHUB_CLIENT_ID
+    client_secret: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GITHUB_CLIENT_SECRET
+    redirect_url: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GITHUB_REDIRECT_URL
+
+mfa:
+  totp:
+    issuer: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_MFA_TOTP_ISSUER
+    skew: 1 # override: SSO_MFA_TOTP_SKEW
+
+security:
+  encryption_key: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_SECURITY_ENCRYPTION_KEY
+  rate_limit:
+    login:
+      max_attempts: 5
+      window: 15m
+    totp:
+      max_attempts: 3
+      window: 5m
+    magic_link:
+      max_attempts: 3
+      window: 15m
+
+observability:
+  log:
+    level: "info" # override: SSO_LOG_LEVEL
+    format: "json" # override: SSO_LOG_FORMAT
+  metrics:
+    enabled: true # override: SSO_METRICS_ENABLED
+    path: "/metrics" # override: SSO_METRICS_PATH
+  tracing:
+    enabled: true # override: SSO_TRACING_ENABLED
+    exporter: "otlp" # override: SSO_TRACING_EXPORTER
+    endpoint: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_TRACING_ENDPOINT

@@ -1,0 +1,66 @@
+server:
+  http:
+    host: "0.0.0.0"
+    port: 8080
+    read_timeout: 10s
+    write_timeout: 30s
+  grpc:
+    host: "0.0.0.0"
+    port: 9090
+
+database:
+  postgres:
+    dsn: "postgres://sso:sso@localhost:5432/sso?sslmode=disable" # override via .env SSO_DATABASE_POSTGRES_DSN
+    max_open_conns: 25
+    max_idle_conns: 10
+    conn_max_lifetime: 5m
+  redis:
+    addr: "localhost:6379"
+    password: "" # override via .env SSO_DATABASE_REDIS_PASSWORD
+    db: 0
+
+auth:
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h
+  issuer: "http://localhost:8080" # override via .env SSO_AUTH_ISSUER
+  jwt_signing_algorithm: "EdDSA"
+
+federation:
+  google:
+    client_id: "google-client-id-stub" # override via .env SSO_FEDERATION_GOOGLE_CLIENT_ID
+    client_secret: "google-client-secret-stub" # override via .env SSO_FEDERATION_GOOGLE_CLIENT_SECRET
+    redirect_url: "http://localhost:8080/api/v1/auth/federation/google/callback" # override via .env SSO_FEDERATION_GOOGLE_REDIRECT_URL
+  github:
+    client_id: "github-client-id-stub" # override via .env SSO_FEDERATION_GITHUB_CLIENT_ID
+    client_secret: "github-client-secret-stub" # override via .env SSO_FEDERATION_GITHUB_CLIENT_SECRET
+    redirect_url: "http://localhost:8080/api/v1/auth/federation/github/callback" # override via .env SSO_FEDERATION_GITHUB_REDIRECT_URL
+
+mfa:
+  totp:
+    issuer: "MySSO"
+    skew: 1
+
+security:
+  encryption_key: "stub-encryption-key-change-me-32b" # override via .env SSO_SECURITY_ENCRYPTION_KEY
+  rate_limit:
+    login:
+      max_attempts: 5
+      window: 15m
+    totp:
+      max_attempts: 5
+      window: 5m
+    magic_link:
+      max_attempts: 3
+      window: 15m
+
+observability:
+  log:
+    level: "debug"
+    format: "console"
+  metrics:
+    enabled: true
+    path: "/metrics"
+  tracing:
+    enabled: false
+    exporter: "otlp"
+    endpoint: "localhost:4317"
