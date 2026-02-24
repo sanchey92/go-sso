@@ -40,8 +40,8 @@ type DatabaseConfig struct {
 
 type PostgresConfig struct {
 	DSN             string        `yaml:"dsn"                env:"SSO_DATABASE_POSTGRES_DSN"                env-required:"true"`
-	MaxConns        int           `yaml:"max_conns"          env:"SSO_DATABASE_POSTGRES_MAX_CONNS"          env-default:"25"`
-	MinConns        int           `yaml:"min_conns"          env:"SSO_DATABASE_POSTGRES_MIN_CONNS"          env-default:"5"`
+	MaxConns        int32         `yaml:"max_conns"          env:"SSO_DATABASE_POSTGRES_MAX_CONNS"          env-default:"25"`
+	MinConns        int32         `yaml:"min_conns"          env:"SSO_DATABASE_POSTGRES_MIN_CONNS"          env-default:"5"`
 	MaxConnLifetime time.Duration `yaml:"max_conn_lifetime"  env:"SSO_DATABASE_POSTGRES_MAX_CONN_LIFETIME"  env-default:"30m"`
 	MaxConnIdleTime time.Duration `yaml:"max_conn_idle_time" env:"SSO_DATABASE_POSTGRES_MAX_CONN_IDLE_TIME" env-default:"5m"`
 }
