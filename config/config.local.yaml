@@ -11,9 +11,10 @@ server:
 database:
   postgres:
     dsn: "postgres://sso:sso@localhost:5432/sso?sslmode=disable" # override via .env SSO_DATABASE_POSTGRES_DSN
-    max_open_conns: 25
-    max_idle_conns: 10
-    conn_max_lifetime: 5m
+    max_conns: 25
+    min_conns: 5
+    max_conn_lifetime: 30m
+    max_conn_idle_time: 5m
   redis:
     addr: "localhost:6379"
     password: "" # override via .env SSO_DATABASE_REDIS_PASSWORD

@@ -16,9 +16,10 @@ server:
 database:
   postgres:
     dsn: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_POSTGRES_DSN
-    max_open_conns: 50 # override: SSO_DATABASE_POSTGRES_MAX_OPEN_CONNS
-    max_idle_conns: 25 # override: SSO_DATABASE_POSTGRES_MAX_IDLE_CONNS
-    conn_max_lifetime: 5m # override: SSO_DATABASE_POSTGRES_CONN_MAX_LIFETIME
+    max_conns: 25
+    min_conns: 5
+    max_conn_lifetime: 30m
+    max_conn_idle_time: 5m
   redis:
     addr: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_REDIS_ADDR
     password: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_REDIS_PASSWORD

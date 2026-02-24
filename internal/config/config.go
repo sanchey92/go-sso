@@ -39,10 +39,11 @@ type DatabaseConfig struct {
 }
 
 type PostgresConfig struct {
-	DSN             string        `yaml:"dsn"               env:"SSO_DATABASE_POSTGRES_DSN"               env-required:"true"`
-	MaxOpenConns    int           `yaml:"max_open_conns"    env:"SSO_DATABASE_POSTGRES_MAX_OPEN_CONNS"    env-default:"25"`
-	MaxIdleConns    int           `yaml:"max_idle_conns"    env:"SSO_DATABASE_POSTGRES_MAX_IDLE_CONNS"    env-default:"10"`
-	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"SSO_DATABASE_POSTGRES_CONN_MAX_LIFETIME" env-default:"5m"`
+	DSN             string        `yaml:"dsn"                env:"SSO_DATABASE_POSTGRES_DSN"                env-required:"true"`
+	MaxConns        int           `yaml:"max_conns"          env:"SSO_DATABASE_POSTGRES_MAX_CONNS"          env-default:"25"`
+	MinConns        int           `yaml:"min_conns"          env:"SSO_DATABASE_POSTGRES_MIN_CONNS"          env-default:"5"`
+	MaxConnLifetime time.Duration `yaml:"max_conn_lifetime"  env:"SSO_DATABASE_POSTGRES_MAX_CONN_LIFETIME"  env-default:"30m"`
+	MaxConnIdleTime time.Duration `yaml:"max_conn_idle_time" env:"SSO_DATABASE_POSTGRES_MAX_CONN_IDLE_TIME" env-default:"5m"`
 }
 
 type RedisConfig struct {
