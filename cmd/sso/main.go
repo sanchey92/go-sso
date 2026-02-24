@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
 	"github.com/joho/godotenv"
 
 	"github.com/sanchey92/sso/internal/config"
+	"github.com/sanchey92/sso/pkg/logger"
 )
 
 func main() {
@@ -16,5 +16,11 @@ func main() {
 	}
 	path := os.Getenv("CONFIG_PATH")
 	cfg := config.MustLoad(path)
-	fmt.Println(cfg)
+
+	l := logger.New(&logger.Config{
+		Level:  cfg.Observability.Log.Level,
+		Format: cfg.Observability.Log.Format,
+	})
+
+	l.Info("zap logger initialized")
 }
