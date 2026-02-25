@@ -48,7 +48,7 @@ func (a *App) Run() {
 
 	a.log.Info("app started")
 
-	//....
+	// ....
 
 	<-ctx.Done()
 	a.Stop()
@@ -70,17 +70,21 @@ func initLogger(cfg config.LogConfig) *zap.Logger {
 }
 
 func initPostgres(cfg *config.PostgresConfig, log *zap.Logger) (*postgres.Storage, error) {
-	return postgres.New(context.Background(), &postgres.Config{
+	s, err := postgres.New(context.Background(), &postgres.Config{
 		DSN:             cfg.DSN,
 		MaxConns:        cfg.MaxConns,
 		MinConns:        cfg.MinConns,
 		MaxConnLifetime: cfg.MaxConnLifetime,
 		MaxConnIdleTime: cfg.MaxConnIdleTime,
 	}, log)
+	if err != nil {
+		return nil, fmt.Errorf("postgres.New: %w", err)
+	}
+	return s, nil
 }
 
 func initCache(cfg *config.RedisConfig, log *zap.Logger) (*redis.Cache, error) {
-	return redis.NewCache(&redis.Config{
+	c, err := redis.NewCache(&redis.Config{
 		Address:         cfg.Addr,
 		Password:        cfg.Password,
 		DB:              cfg.DB,
@@ -91,4 +95,8 @@ func initCache(cfg *config.RedisConfig, log *zap.Logger) (*redis.Cache, error) {
 		MinIdleConns:    cfg.MinIdleConns,
 		ConnMaxIdleTime: cfg.ConnMaxIdleTime,
 	}, log)
+	if err != nil {
+		return nil, fmt.Errorf("redis.NewCache: %w", err)
+	}
+	return c, nil
 }

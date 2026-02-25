@@ -48,7 +48,7 @@ type PostgresConfig struct {
 
 type RedisConfig struct {
 	Addr            string        `yaml:"addr"               env:"SSO_DATABASE_REDIS_ADDR"               env-default:"localhost:6379"`
-	Password        string        `yaml:"password"           env:"SSO_DATABASE_REDIS_PASSWORD"           env-default:""`
+	Password        string        `yaml:"password"           env:"SSO_DATABASE_REDIS_PASSWORD"           env-default:""` //nolint:gosec // not a hardcoded credential
 	DB              int           `yaml:"db"                 env:"SSO_DATABASE_REDIS_DB"                 env-default:"0"`
 	DialTimeout     time.Duration `yaml:"dial_timeout"       env:"SSO_DATABASE_REDIS_DIAL_TIMEOUT"       env-default:"5s"`
 	ReadTimeout     time.Duration `yaml:"read_timeout"       env:"SSO_DATABASE_REDIS_READ_TIMEOUT"       env-default:"3s"`
@@ -67,7 +67,7 @@ type AuthConfig struct {
 
 type OAuthProviderConfig struct {
 	ClientID     string `yaml:"client_id"     env-required:"true"`
-	ClientSecret string `yaml:"client_secret" env-required:"true"`
+	ClientSecret string `yaml:"client_secret" env-required:"true"` //nolint:gosec // not a hardcoded credential
 	RedirectURL  string `yaml:"redirect_url"  env-required:"true"`
 }
 

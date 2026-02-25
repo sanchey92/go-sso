@@ -11,7 +11,7 @@ import (
 
 type Config struct {
 	Address         string
-	Password        string
+	Password        string //nolint:gosec // not a hardcoded credential, loaded from config
 	DB              int
 	DialTimeout     time.Duration
 	ReadTimeout     time.Duration
@@ -53,5 +53,8 @@ func NewCache(config *Config, log *zap.Logger) (*Cache, error) {
 }
 
 func (c *Cache) Close() error {
-	return c.client.Close()
+	if err := c.client.Close(); err != nil {
+		return fmt.Errorf("redis close: %w", err)
+	}
+	return nil
 }
