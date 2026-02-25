@@ -19,6 +19,12 @@ database:
     addr: "localhost:6379"
     password: "" # override via .env SSO_DATABASE_REDIS_PASSWORD
     db: 0
+    dial_timeout: 5s
+    read_timeout: 3s
+    write_timeout: 3s
+    pool_size: 10
+    min_idle_conns: 2
+    conn_max_idle_time: 30m
 
 auth:
   access_token_ttl: 15m

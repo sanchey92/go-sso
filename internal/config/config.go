@@ -47,9 +47,15 @@ type PostgresConfig struct {
 }
 
 type RedisConfig struct {
-	Addr     string `yaml:"addr"     env:"SSO_DATABASE_REDIS_ADDR"     env-default:"localhost:6379"`
-	Password string `yaml:"password" env:"SSO_DATABASE_REDIS_PASSWORD" env-default:""`
-	DB       int    `yaml:"db"       env:"SSO_DATABASE_REDIS_DB"       env-default:"0"`
+	Addr            string        `yaml:"addr"               env:"SSO_DATABASE_REDIS_ADDR"               env-default:"localhost:6379"`
+	Password        string        `yaml:"password"           env:"SSO_DATABASE_REDIS_PASSWORD"           env-default:""`
+	DB              int           `yaml:"db"                 env:"SSO_DATABASE_REDIS_DB"                 env-default:"0"`
+	DialTimeout     time.Duration `yaml:"dial_timeout"       env:"SSO_DATABASE_REDIS_DIAL_TIMEOUT"       env-default:"5s"`
+	ReadTimeout     time.Duration `yaml:"read_timeout"       env:"SSO_DATABASE_REDIS_READ_TIMEOUT"       env-default:"3s"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"      env:"SSO_DATABASE_REDIS_WRITE_TIMEOUT"      env-default:"3s"`
+	PoolSize        int           `yaml:"pool_size"          env:"SSO_DATABASE_REDIS_POOL_SIZE"          env-default:"10"`
+	MinIdleConns    int           `yaml:"min_idle_conns"     env:"SSO_DATABASE_REDIS_MIN_IDLE_CONNS"     env-default:"2"`
+	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" env:"SSO_DATABASE_REDIS_CONN_MAX_IDLE_TIME" env-default:"30m"`
 }
 
 type AuthConfig struct {

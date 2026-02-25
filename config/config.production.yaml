@@ -24,6 +24,12 @@ database:
     addr: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_REDIS_ADDR
     password: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_DATABASE_REDIS_PASSWORD
     db: 0 # override: SSO_DATABASE_REDIS_DB
+    dial_timeout: 5s # override: SSO_DATABASE_REDIS_DIAL_TIMEOUT
+    read_timeout: 3s # override: SSO_DATABASE_REDIS_READ_TIMEOUT
+    write_timeout: 3s # override: SSO_DATABASE_REDIS_WRITE_TIMEOUT
+    pool_size: 20 # override: SSO_DATABASE_REDIS_POOL_SIZE
+    min_idle_conns: 5 # override: SSO_DATABASE_REDIS_MIN_IDLE_CONNS
+    conn_max_idle_time: 30m # override: SSO_DATABASE_REDIS_CONN_MAX_IDLE_TIME
 
 auth:
   access_token_ttl: 15m # override: SSO_AUTH_ACCESS_TOKEN_TTL
