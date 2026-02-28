@@ -23,15 +23,13 @@ internal/
 
 **Phase 1: Foundation** — in progress
 
-Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id).
+Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA).
 
 ### Current
 
-- **JWT Service (EdDSA)** — генерация и валидация access tokens с подписью Ed25519, поддержка ротации ключей, JWKS endpoint
+- **Use case: Registration** — `Register(email, password)` с валидацией, хешированием и сохранением в БД
 
 ### Roadmap
-
-- **Use case: Registration** — `Register(email, password)` с валидацией, хешированием и сохранением в БД
 - **Use case: Login** — `Login(email, password)` с выдачей JWT access + refresh token pair
 - **Refresh Token Rotation** — ротация refresh tokens с family-based replay detection
 
