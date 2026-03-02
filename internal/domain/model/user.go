@@ -21,3 +21,13 @@ type User struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
+
+func NewUser(email, hash string) *User {
+	return &User{
+		Email:         email,
+		PasswordHash:  hash,
+		EmailVerified: false,
+		MFAEnabled:    false,
+		Status:        UserStatusActive,
+	}
+}
