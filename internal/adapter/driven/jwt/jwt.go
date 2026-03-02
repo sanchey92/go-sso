@@ -95,7 +95,6 @@ func (s *Service) ValidateToken(tokenStr string) (*Claims, error) {
 		Issuer:   claims.Issuer,
 		Audience: aud,
 	}, nil
-
 }
 
 func (s *Service) GetJWKS() *JWKS {
