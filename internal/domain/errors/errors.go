@@ -7,4 +7,5 @@ var (
 	ErrEmailAlreadyExists = errors.New("email already exists")
 	ErrUserNotFound       = errors.New("user not found")
 	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrEmailNotVerified   = errors.New("email not verified")
 )
