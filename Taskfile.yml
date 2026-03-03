@@ -1,15 +1,17 @@
 version: 3
 
-dotenv: ['.env']
+dotenv: [ '.env' ]
 
 vars:
   GO_VERSION: '1.26'
   GOLANGCI_LINT_VERSION: 'v2.10.1'
   GOOSE_VERSION: 'v3.24.1'
+  MOCKERY_VERSION: 'v2.53.3'
 
   BIN_DIR: '{{.ROOT_DIR}}/bin'
   GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
   GOOSE: '{{.BIN_DIR}}/goose'
+  MOCKERY: '{{.BIN_DIR}}/mockery'
 
 tasks:
   build:
@@ -39,6 +41,7 @@ tasks:
     cmds:
       - task: install:golangci-lint
       - task: install:goose
+      - task: install:mockery
 
   install:golangci-lint:
     desc: install golangci-lint
@@ -55,6 +58,14 @@ tasks:
       - GOBIN={{.BIN_DIR}} go install github.com/pressly/goose/v3/cmd/goose@{{.GOOSE_VERSION}}
     status:
       - test -f {{.GOOSE}}
+
+  install:mockery:
+    desc: install mockery
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOBIN={{.BIN_DIR}} go install github.com/vektra/mockery/v2@{{.MOCKERY_VERSION}}
+    status:
+      - test -x {{.MOCKERY}}
 
   lint:
     desc: run golangci-lint
@@ -90,3 +101,13 @@ tasks:
       - install:goose
     cmds:
       - '{{.GOOSE}} -dir $MIGRATIONS_DIR create {{.CLI_ARGS}} sql'
+
+  mockery:gen:
+    desc: generate mocks
+    deps:
+      - install:mockery
+    cmds:
+      - |
+        echo 'mocks gen...'
+        {{.MOCKERY}}
+
