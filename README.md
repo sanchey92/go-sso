@@ -23,14 +23,15 @@ internal/
 
 **Phase 1: Foundation** — in progress
 
-Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration.
+Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login.
 
 ### Current
 
-- **Use case: Login** — `Login(email, password)` с выдачей JWT access + refresh token pair
+- **Refresh Token Rotation** — ротация refresh tokens с family-based replay detection
 
 ### Roadmap
-- **Refresh Token Rotation** — ротация refresh tokens с family-based replay detection
+- HTTP server + middleware
+- REST handlers for auth endpoints
 
 ## Development
 
