@@ -10,4 +10,6 @@ packages:
   github.com/sanchey92/sso/internal/app/auth:
     interfaces:
       Hasher:
+      TokenService:
       UserRepository:
+      RefreshTokenRepository:
