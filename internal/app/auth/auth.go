@@ -34,10 +34,13 @@ type UserRepository interface {
 }
 
 type RefreshTokenRepository interface {
-	Create(ctx context.Context, token *model.RefreshToken) error
+	SaveToken(ctx context.Context, token *model.RefreshToken) error
+	GetByHash(ctx context.Context, hash string) (*model.RefreshToken, error)
+	Revoke(ctx context.Context, id string) error
+	RevokeByFamilyID(ctx context.Context, familyID string) error
 }
 
-type LoginResult struct {
+type TokenPair struct {
 	AccessToken  string //nolint:gosec // response DTO field, not a hardcoded secret
 	RefreshToken string //nolint:gosec // response DTO field, not a hardcoded secret
 	ExpiresIn    int64
@@ -98,7 +101,7 @@ func (s *Service) Register(ctx context.Context, email, password string) (*model.
 	return user, nil
 }
 
-func (s *Service) Login(ctx context.Context, email, password string) (*LoginResult, error) {
+func (s *Service) Login(ctx context.Context, email, password string) (*TokenPair, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	user, err := s.userRepo.GetByEmail(ctx, email)
@@ -135,21 +138,69 @@ func (s *Service) Login(ctx context.Context, email, password string) (*LoginResu
 		return nil, fmt.Errorf("generate family id: %w", err)
 	}
 
-	refreshToken, err := s.GenerateRefreshToken(ctx, user.ID, familyID)
+	refreshToken, err := s.GenerateRefreshToken(ctx, user.ID, familyID, "", nil)
 	if err != nil {
 		return nil, err
 	}
 
 	s.log.Info("user logged in", zap.String("user_id", user.ID))
 
-	return &LoginResult{
+	return &TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(s.accessTTL.Seconds()),
 	}, nil
 }
 
-func (s *Service) GenerateRefreshToken(ctx context.Context, userID, familyID string) (string, error) {
+func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*TokenPair, error) {
+	tokenHash := hashToken(refreshToken)
+
+	stored, err := s.refreshRepo.GetByHash(ctx, tokenHash)
+	if err != nil {
+		return nil, fmt.Errorf("get refresh token: %w", err)
+	}
+	if time.Now().After(stored.ExpiresAt) {
+		return nil, domainerrors.ErrTokenExpired
+	}
+
+	if stored.Revoked {
+		if revokeErr := s.refreshRepo.RevokeByFamilyID(ctx, stored.FamilyID); revokeErr != nil {
+			return nil, fmt.Errorf("revoke token family: %w", revokeErr)
+		}
+		s.log.Warn("refresh token replay detected",
+			zap.String("family_id", stored.FamilyID),
+			zap.String("user_id", stored.UserID),
+		)
+		return nil, domainerrors.ErrTokenRevoked
+	}
+
+	if err = s.refreshRepo.Revoke(ctx, stored.ID); err != nil {
+		return nil, fmt.Errorf("revoke current token: %w", err)
+	}
+
+	newAccessToken, err := s.tokenSrv.GenerateToken(stored.UserID, defaultAudience)
+	if err != nil {
+		return nil, fmt.Errorf("generate access token: %w", err)
+	}
+
+	newRefreshToken, err := s.GenerateRefreshToken(ctx, stored.UserID, stored.FamilyID, stored.ClientID, stored.Scopes)
+	if err != nil {
+		return nil, fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	s.log.Info("tokens refreshed",
+		zap.String("user_id", stored.UserID),
+		zap.String("family_id", stored.FamilyID),
+	)
+
+	return &TokenPair{
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
+		ExpiresIn:    int64(s.accessTTL.Seconds()),
+	}, nil
+}
+
+func (s *Service) GenerateRefreshToken(ctx context.Context, userID, familyID, clientID string, scopes []string) (string, error) {
 	rawToken, err := generateRandomToken(32)
 	if err != nil {
 		return "", fmt.Errorf("generate refresh token: %w", err)
@@ -158,9 +209,11 @@ func (s *Service) GenerateRefreshToken(ctx context.Context, userID, familyID str
 		TokenHash: hashToken(rawToken),
 		UserID:    userID,
 		FamilyID:  familyID,
+		ClientID:  clientID,
+		Scopes:    scopes,
 		ExpiresAt: time.Now().Add(s.refreshTTL),
 	}
-	if err = s.refreshRepo.Create(ctx, refreshToken); err != nil {
+	if err = s.refreshRepo.SaveToken(ctx, refreshToken); err != nil {
 		return "", fmt.Errorf("save refresh token: %w", err)
 	}
 

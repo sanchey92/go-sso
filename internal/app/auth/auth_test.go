@@ -193,7 +193,7 @@ func TestService_Login(t *testing.T) {
 			rr *mocks.RefreshTokenRepository,
 		)
 		wantErr string
-		check   func(t *testing.T, pair *LoginResult)
+		check   func(t *testing.T, pair *TokenPair)
 	}{
 		{
 			name:     "successful login",
@@ -206,10 +206,10 @@ func TestService_Login(t *testing.T) {
 					Return(true, nil)
 				ts.EXPECT().GenerateToken("user-uuid", "sso").
 					Return("access-jwt-token", nil)
-				rr.EXPECT().Create(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
+				rr.EXPECT().SaveToken(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
 					Return(nil)
 			},
-			check: func(t *testing.T, pair *LoginResult) {
+			check: func(t *testing.T, pair *TokenPair) {
 				assert.Equal(t, "access-jwt-token", pair.AccessToken)
 				assert.NotEmpty(t, pair.RefreshToken)
 				assert.Equal(t, int64(60), pair.ExpiresIn) // time.Minute = 60s
@@ -298,7 +298,7 @@ func TestService_Login(t *testing.T) {
 					Return(true, nil)
 				ts.EXPECT().GenerateToken("user-uuid", "sso").
 					Return("access-jwt-token", nil)
-				rr.EXPECT().Create(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
+				rr.EXPECT().SaveToken(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
 					Return(errors.New("insert failed"))
 			},
 			wantErr: "save refresh token: insert failed",
@@ -314,10 +314,10 @@ func TestService_Login(t *testing.T) {
 					Return(true, nil)
 				ts.EXPECT().GenerateToken("user-uuid", "sso").
 					Return("access-jwt-token", nil)
-				rr.EXPECT().Create(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
+				rr.EXPECT().SaveToken(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
 					Return(nil)
 			},
-			check: func(t *testing.T, pair *LoginResult) {
+			check: func(t *testing.T, pair *TokenPair) {
 				assert.NotEmpty(t, pair.AccessToken)
 			},
 		},
@@ -334,6 +334,168 @@ func TestService_Login(t *testing.T) {
 			svc := New(hasher, tokenSrv, userRepo, refreshRepo, time.Minute, time.Hour, zap.NewNop())
 
 			pair, err := svc.Login(ctx, tt.email, tt.password)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Nil(t, pair)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, pair)
+
+			if tt.check != nil {
+				tt.check(t, pair)
+			}
+		})
+	}
+}
+
+func TestService_RefreshTokens(t *testing.T) {
+	ctx := context.Background()
+
+	validRT := &model.RefreshToken{
+		ID:        "rt-uuid",
+		TokenHash: hashToken("valid-refresh-token"),
+		UserID:    "user-uuid",
+		FamilyID:  "family-uuid",
+		Revoked:   false,
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+
+	tests := []struct {
+		name         string
+		refreshToken string
+		setupMock    func(
+			ts *mocks.TokenService,
+			rr *mocks.RefreshTokenRepository,
+		)
+		wantErr string
+		check   func(t *testing.T, pair *TokenPair)
+	}{
+		{
+			name:         "successful refresh",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(validRT, nil)
+				rr.EXPECT().Revoke(mock.Anything, "rt-uuid").
+					Return(nil)
+				ts.EXPECT().GenerateToken("user-uuid", "sso").
+					Return("new-access-jwt", nil)
+				rr.EXPECT().SaveToken(mock.Anything, mock.MatchedBy(func(rt *model.RefreshToken) bool {
+					return rt.FamilyID == "family-uuid" &&
+						rt.UserID == "user-uuid" &&
+						rt.TokenHash != "" &&
+						!rt.Revoked
+				})).Return(nil)
+			},
+			check: func(t *testing.T, pair *TokenPair) {
+				assert.Equal(t, "new-access-jwt", pair.AccessToken)
+				assert.NotEmpty(t, pair.RefreshToken)
+				assert.NotEqual(t, "valid-refresh-token", pair.RefreshToken)
+				assert.Equal(t, int64(60), pair.ExpiresIn)
+			},
+		},
+		{
+			name:         "token not found",
+			refreshToken: "unknown-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("unknown-token")).
+					Return(nil, domainerrors.ErrInvalidToken)
+			},
+			wantErr: domainerrors.ErrInvalidToken.Error(),
+		},
+		{
+			name:         "expired token",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				expired := *validRT
+				expired.ExpiresAt = time.Now().Add(-time.Hour)
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(&expired, nil)
+			},
+			wantErr: domainerrors.ErrTokenExpired.Error(),
+		},
+		{
+			name:         "revoked token triggers family revocation",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				revoked := *validRT
+				revoked.Revoked = true
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(&revoked, nil)
+				rr.EXPECT().RevokeByFamilyID(mock.Anything, "family-uuid").
+					Return(nil)
+			},
+			wantErr: domainerrors.ErrTokenRevoked.Error(),
+		},
+		{
+			name:         "revoke current token fails",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(validRT, nil)
+				rr.EXPECT().Revoke(mock.Anything, "rt-uuid").
+					Return(errors.New("db error"))
+			},
+			wantErr: "revoke current token: db error",
+		},
+		{
+			name:         "generate access token fails",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(validRT, nil)
+				rr.EXPECT().Revoke(mock.Anything, "rt-uuid").
+					Return(nil)
+				ts.EXPECT().GenerateToken("user-uuid", "sso").
+					Return("", errors.New("sign failed"))
+			},
+			wantErr: "generate access token: sign failed",
+		},
+		{
+			name:         "save new refresh token fails",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(validRT, nil)
+				rr.EXPECT().Revoke(mock.Anything, "rt-uuid").
+					Return(nil)
+				ts.EXPECT().GenerateToken("user-uuid", "sso").
+					Return("new-access-jwt", nil)
+				rr.EXPECT().SaveToken(mock.Anything, mock.AnythingOfType("*model.RefreshToken")).
+					Return(errors.New("insert failed"))
+			},
+			wantErr: "save refresh token: insert failed",
+		},
+		{
+			name:         "family revocation fails on replay",
+			refreshToken: "valid-refresh-token",
+			setupMock: func(ts *mocks.TokenService, rr *mocks.RefreshTokenRepository) {
+				revoked := *validRT
+				revoked.Revoked = true
+				rr.EXPECT().GetByHash(mock.Anything, hashToken("valid-refresh-token")).
+					Return(&revoked, nil)
+				rr.EXPECT().RevokeByFamilyID(mock.Anything, "family-uuid").
+					Return(errors.New("db error"))
+			},
+			wantErr: "revoke token family: db error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasher := mocks.NewHasher(t)
+			userRepo := mocks.NewUserRepository(t)
+			tokenSrv := mocks.NewTokenService(t)
+			refreshRepo := mocks.NewRefreshTokenRepository(t)
+			tt.setupMock(tokenSrv, refreshRepo)
+
+			svc := New(hasher, tokenSrv, userRepo, refreshRepo, time.Minute, time.Hour, zap.NewNop())
+
+			pair, err := svc.RefreshTokens(ctx, tt.refreshToken)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
