@@ -5,20 +5,23 @@ import (
 	"fmt"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/pkg/logger"
 )
 
 type App struct {
-	cfg     *config.Config
-	log     *zap.Logger
-	storage *postgres.Storage
-	cache   *redis.Cache
+	cfg        *config.Config
+	log        *zap.Logger
+	storage    *postgres.Storage
+	cache      *redis.Cache
+	httpServer *rest.Server
 }
 
 func NewApp(cfg *config.Config) (*App, error) {
@@ -34,11 +37,19 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("redis: %w", err)
 	}
 
+	httpServer := rest.NewServer(&rest.Config{
+		Host:         cfg.Server.HTTP.Host,
+		Port:         cfg.Server.HTTP.Port,
+		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
+		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
+	}, log)
+
 	return &App{
-		cfg:     cfg,
-		log:     log,
-		storage: storage,
-		cache:   cache,
+		cfg:        cfg,
+		log:        log,
+		storage:    storage,
+		cache:      cache,
+		httpServer: httpServer,
 	}, nil
 }
 
@@ -46,15 +57,26 @@ func (a *App) Run() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	a.log.Info("app started")
+	go func() {
+		if err := a.httpServer.Start(); err != nil {
+			a.log.Fatal("http server error", zap.Error(err))
+		}
+	}()
 
-	// ....
+	a.log.Info("app started")
 
 	<-ctx.Done()
 	a.Stop()
 }
 
 func (a *App) Stop() {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := a.httpServer.Stop(shutdownCtx); err != nil {
+		a.log.Error("http server shutdown error", zap.Error(err))
+	}
+
 	a.storage.Close()
 	if err := a.cache.Close(); err != nil {
 		a.log.Error("failed close redis", zap.Error(err))
