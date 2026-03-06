@@ -12,7 +12,7 @@ import (
 )
 
 func newTestServer() *Server {
-	return NewServer(&Config{Host: "localhost", Port: 0}, zap.NewNop())
+	return NewServer(&Config{Host: "localhost", Port: 0}, &AuthHandler{}, zap.NewNop())
 }
 
 func TestHealthz(t *testing.T) {

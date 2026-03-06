@@ -19,17 +19,19 @@ type Config struct {
 }
 
 type Server struct {
-	httpServer *http.Server
-	router     chi.Router
-	log        *zap.Logger
+	httpServer   *http.Server
+	authHandlers *AuthHandler
+	router       chi.Router
+	log          *zap.Logger
 }
 
-func NewServer(cfg *Config, log *zap.Logger) *Server {
+func NewServer(cfg *Config, authHandler *AuthHandler, log *zap.Logger) *Server {
 	r := chi.NewRouter()
 
 	s := &Server{
-		router: r,
-		log:    log,
+		router:       r,
+		authHandlers: authHandler,
+		log:          log,
 	}
 
 	s.setupMiddleware()
@@ -53,6 +55,14 @@ func (s *Server) setupMiddleware() {
 }
 
 func (s *Server) setupRoutes() {
+	s.router.Route("/api/v1/auth", func(r chi.Router) {
+		r.Post("/register", s.authHandlers.Register)
+		r.Post("/login", s.authHandlers.Login)
+		r.Post("/token/refresh", s.authHandlers.Refresh)
+		r.Post("/token/revoke", s.authHandlers.Revoke)
+
+	})
+
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
