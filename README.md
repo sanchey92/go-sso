@@ -23,15 +23,22 @@ internal/
 
 **Phase 1: Foundation** — in progress
 
-Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login, refresh token rotation with replay detection, HTTP server + middleware (chi, Request ID, Recovery, Logging, CORS, graceful shutdown).
+Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login, refresh token rotation with replay detection, HTTP server + middleware (chi), REST auth handlers.
 
-### Current
+### API Endpoints
 
-- **REST handlers for auth endpoints** — register, login, refresh, revoke
+| Method | Path | Description | Status |
+|--------|------|-------------|--------|
+| POST | `/api/v1/auth/register` | Регистрация | 201 |
+| POST | `/api/v1/auth/login` | Логин → access + refresh tokens | 200 |
+| POST | `/api/v1/auth/token/refresh` | Ротация refresh token | 200 |
+| POST | `/api/v1/auth/token/revoke` | Отзыв refresh token | 204 |
+| GET | `/healthz` | Health check | 200 |
 
 ### Roadmap
 - Email verification
 - Password reset flow
+- Rate limiting (Redis)
 
 ## Development
 

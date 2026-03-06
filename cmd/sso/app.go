@@ -9,9 +9,12 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
+	jwtadapter "github.com/sanchey92/sso/internal/adapter/driven/jwt"
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
+	"github.com/sanchey92/sso/internal/app/auth"
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/pkg/logger"
 )
@@ -37,12 +40,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("redis: %w", err)
 	}
 
-	httpServer := rest.NewServer(&rest.Config{
-		Host:         cfg.Server.HTTP.Host,
-		Port:         cfg.Server.HTTP.Port,
-		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
-		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, log)
+	jwtService, err := initJWT(&cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("jwt: %w", err)
+	}
+
+	authService := initAuthService(storage, jwtService, &cfg.Auth, log)
+	httpServer := initHTTPServer(&cfg.Server.HTTP, authService, log)
 
 	return &App{
 		cfg:        cfg,
@@ -121,4 +125,37 @@ func initCache(cfg *config.RedisConfig, log *zap.Logger) (*redis.Cache, error) {
 		return nil, fmt.Errorf("redis.NewCache: %w", err)
 	}
 	return c, nil
+}
+
+func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
+	s, err := jwtadapter.NewService(&jwtadapter.Config{
+		Issuer:         cfg.Issuer,
+		AccessTokenTTL: cfg.AccessTokenTTL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("jwtadapter.NewService: %w", err)
+	}
+	return s, nil
+}
+
+func initAuthService(storage *postgres.Storage, jwtService *jwtadapter.Service, cfg *config.AuthConfig, log *zap.Logger) *auth.Service {
+	return auth.New(
+		hasher.New(hasher.DefaultConfig()),
+		jwtService,
+		storage,
+		storage,
+		cfg.AccessTokenTTL,
+		cfg.RefreshTokenTTL,
+		log,
+	)
+}
+
+func initHTTPServer(cfg *config.HTTPServerConfig, authService *auth.Service, log *zap.Logger) *rest.Server {
+	authHandler := rest.NewAuthHandler(authService, log)
+	return rest.NewServer(&rest.Config{
+		Host:         cfg.Host,
+		Port:         cfg.Port,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+	}, authHandler, log)
 }
