@@ -13,3 +13,6 @@ packages:
       TokenService:
       UserRepository:
       RefreshTokenRepository:
+  github.com/sanchey92/sso/internal/adapter/driving/rest:
+    interfaces:
+      AuthService:
