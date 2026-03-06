@@ -200,6 +200,25 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*Toke
 	}, nil
 }
 
+func (s *Service) RevokeToken(ctx context.Context, rawToken string) error {
+	tokenHash := hashToken(rawToken)
+
+	stored, err := s.refreshRepo.GetByHash(ctx, tokenHash)
+	if err != nil {
+		return fmt.Errorf("get refresh token: %w", err)
+	}
+	if stored.Revoked {
+		return nil
+	}
+
+	if err := s.refreshRepo.Revoke(ctx, stored.ID); err != nil {
+		return fmt.Errorf("revoke token: %w", err)
+	}
+
+	s.log.Info("token revoked", zap.String("user_id", stored.UserID))
+	return nil
+}
+
 func (s *Service) GenerateRefreshToken(ctx context.Context, userID, familyID, clientID string, scopes []string) (string, error) {
 	rawToken, err := generateRandomToken(32)
 	if err != nil {
