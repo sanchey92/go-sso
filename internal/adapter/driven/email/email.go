@@ -25,3 +25,11 @@ func (s *LogSender) SendVerificationEmail(_ context.Context, toEmail, token stri
 	)
 	return nil
 }
+
+func (s *LogSender) SendPasswordResetEmail(_ context.Context, toEmail, token string) error {
+	s.log.Info("password reset email",
+		zap.String("to", toEmail),
+		zap.String("reset_url", s.baseURL+"/api/v1/auth/password/reset?token="+token),
+	)
+	return nil
+}
