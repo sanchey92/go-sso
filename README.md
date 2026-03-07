@@ -14,16 +14,16 @@ Hexagonal (Ports & Adapters) — domain models без внешних завис�
 cmd/sso/           — entrypoint
 internal/
   domain/model/    — бизнес-сущности
-  app/             — use cases + ports
+  usecase/         — use cases + ports
   adapter/driving/ — REST, gRPC
-  adapter/driven/  — PostgreSQL, Redis, JWT, Hasher
+  adapter/driven/  — PostgreSQL, Redis, JWT, Hasher, Email
 ```
 
 ## Status
 
 **Phase 1: Foundation** — in progress
 
-Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login, refresh token rotation with replay detection, HTTP server + middleware (chi), REST auth handlers.
+Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login, refresh token rotation with replay detection, HTTP server + middleware (chi), REST auth handlers, email verification.
 
 ### API Endpoints
 
@@ -33,12 +33,13 @@ Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging 
 | POST | `/api/v1/auth/login` | Логин → access + refresh tokens | 200 |
 | POST | `/api/v1/auth/token/refresh` | Ротация refresh token | 200 |
 | POST | `/api/v1/auth/token/revoke` | Отзыв refresh token | 204 |
+| POST | `/api/v1/auth/email/verify` | Верификация email по токену | 200 |
 | GET | `/healthz` | Health check | 200 |
 
 ### Roadmap
-- Email verification
 - Password reset flow
 - Rate limiting (Redis)
+- main.go + DI + graceful shutdown
 
 ## Development
 
