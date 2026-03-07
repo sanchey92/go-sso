@@ -16,7 +16,7 @@ const defaultAudience = "sso"
 
 type TokenGenerator interface {
 	GenerateToken(userID, audience string) (string, error)
-	GenerateRefreshToken() (raw string, hash string, err error)
+	GenerateRefreshToken() (raw, hash string, err error)
 }
 
 type RefreshTokenRepository interface {

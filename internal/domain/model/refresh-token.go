@@ -15,7 +15,7 @@ type RefreshToken struct {
 }
 
 type TokenPair struct {
-	AccessToken  string //nolint:gosec // response DTO field, not a hardcoded secret
-	RefreshToken string //nolint:gosec // response DTO field, not a hardcoded secret
+	AccessToken  string
+	RefreshToken string
 	ExpiresIn    int64
 }

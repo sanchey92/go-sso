@@ -9,10 +9,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler"
 )
 
 func newTestServer() *Server {
-	return NewServer(&Config{Host: "localhost", Port: 0}, &AuthHandler{}, zap.NewNop())
+	return NewServer(
+		&Config{Host: "localhost", Port: 0},
+		&handler.UserHandler{},
+		&handler.AuthHandler{},
+		&handler.TokenHandler{},
+		zap.NewNop(),
+	)
 }
 
 func TestHealthz(t *testing.T) {

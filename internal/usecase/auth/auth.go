@@ -69,7 +69,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (*model.Tok
 
 	pair, err := s.tokenSvc.IssueTokenPair(ctx, user.ID, "", nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("issue token pair: %w", err)
 	}
 
 	s.log.Info("user logged in", zap.String("user_id", user.ID))

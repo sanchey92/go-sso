@@ -9,6 +9,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
+
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 )
 
 type Config struct {
@@ -20,17 +23,27 @@ type Config struct {
 
 type Server struct {
 	httpServer   *http.Server
-	authHandlers *AuthHandler
 	router       chi.Router
+	userHandler  *handler.UserHandler
+	authHandler  *handler.AuthHandler
+	tokenHandler *handler.TokenHandler
 	log          *zap.Logger
 }
 
-func NewServer(cfg *Config, authHandler *AuthHandler, log *zap.Logger) *Server {
+func NewServer(
+	cfg *Config,
+	userH *handler.UserHandler,
+	authH *handler.AuthHandler,
+	tokenH *handler.TokenHandler,
+	log *zap.Logger,
+) *Server {
 	r := chi.NewRouter()
 
 	s := &Server{
 		router:       r,
-		authHandlers: authHandler,
+		userHandler:  userH,
+		authHandler:  authH,
+		tokenHandler: tokenH,
 		log:          log,
 	}
 
@@ -48,26 +61,25 @@ func NewServer(cfg *Config, authHandler *AuthHandler, log *zap.Logger) *Server {
 }
 
 func (s *Server) setupMiddleware() {
-	s.router.Use(RequestID)
-	s.router.Use(Recovery(s.log))
-	s.router.Use(Logging(s.log))
-	s.router.Use(CORS)
+	s.router.Use(middleware.RequestID)
+	s.router.Use(middleware.Recovery(s.log))
+	s.router.Use(middleware.Logging(s.log))
+	s.router.Use(middleware.CORS)
 }
 
 func (s *Server) setupRoutes() {
 	s.router.Route("/api/v1/auth", func(r chi.Router) {
-		r.Post("/register", s.authHandlers.Register)
-		r.Post("/login", s.authHandlers.Login)
-		r.Post("/token/refresh", s.authHandlers.Refresh)
-		r.Post("/token/revoke", s.authHandlers.Revoke)
-		r.Post("/email/verify", s.authHandlers.VerifyEmail)
-
+		r.Post("/register", s.userHandler.Register)
+		r.Post("/login", s.authHandler.Login)
+		r.Post("/token/refresh", s.tokenHandler.Refresh)
+		r.Post("/token/revoke", s.tokenHandler.Revoke)
+		r.Post("/email/verify", s.userHandler.VerifyEmail)
 	})
 
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "ok"}`))
+		_, _ = w.Write([]byte(`{"status": "ok"}`)) //nolint:gosec // error writing response body is unrecoverable
 	})
 }
 

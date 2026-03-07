@@ -3,7 +3,10 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -155,7 +158,7 @@ func TestService_Register(t *testing.T) {
 			emailSender := mocks.NewEmailSender(t)
 			tt.setupMock(hasher, userRepo, cache, emailSender)
 
-			svc := New(userRepo, hasher, cache, emailSender, zap.NewNop())
+			svc := New(userRepo, hasher, cache, emailSender, mocks.NewTokenRevoker(t), zap.NewNop())
 
 			user, err := svc.Register(ctx, tt.email, tt.password)
 
@@ -241,7 +244,7 @@ func TestService_VerifyEmail(t *testing.T) {
 			userRepo := mocks.NewUserRepository(t)
 			tt.setupMock(cache, userRepo)
 
-			svc := New(userRepo, mocks.NewPasswordHasher(t), cache, mocks.NewEmailSender(t), zap.NewNop())
+			svc := New(userRepo, mocks.NewPasswordHasher(t), cache, mocks.NewEmailSender(t), mocks.NewTokenRevoker(t), zap.NewNop())
 
 			err := svc.VerifyEmail(ctx, tt.token)
 
@@ -302,12 +305,185 @@ func TestService_Register_VerificationEmailFlow(t *testing.T) {
 			emailSender := mocks.NewEmailSender(t)
 			tt.setupMock(hasher, userRepo, cache, emailSender)
 
-			svc := New(userRepo, hasher, cache, emailSender, zap.NewNop())
+			svc := New(userRepo, hasher, cache, emailSender, mocks.NewTokenRevoker(t), zap.NewNop())
 
 			user, err := svc.Register(ctx, "test@example.com", "securepassword")
 
 			require.NoError(t, err)
 			require.NotNil(t, user)
+		})
+	}
+}
+
+func TestService_RequestPasswordReset(t *testing.T) {
+	ctx := t.Context()
+
+	tests := []struct {
+		name      string
+		email     string
+		setupMock func(ur *mocks.UserRepository, cs *mocks.CacheStore, es *mocks.EmailSender)
+		wantErr   bool
+	}{
+		{
+			name:  "successful reset request",
+			email: "user@example.com",
+			setupMock: func(ur *mocks.UserRepository, cs *mocks.CacheStore, es *mocks.EmailSender) {
+				ur.EXPECT().GetByEmail(mock.Anything, "user@example.com").
+					Return(&model.User{ID: "user-123", Email: "user@example.com"}, nil)
+				cs.EXPECT().Set(mock.Anything, mock.MatchedBy(func(key string) bool {
+					return strings.HasPrefix(key, "reset:")
+				}), "user-123", 1*time.Hour).Return(nil)
+				es.EXPECT().SendPasswordResetEmail(mock.Anything, "user@example.com", mock.Anything).
+					Return(nil)
+			},
+		},
+		{
+			name:  "non-existent email returns nil (anti-enumeration)",
+			email: "nobody@example.com",
+			setupMock: func(ur *mocks.UserRepository, _ *mocks.CacheStore, _ *mocks.EmailSender) {
+				ur.EXPECT().GetByEmail(mock.Anything, "nobody@example.com").
+					Return(nil, domainerrors.ErrUserNotFound)
+			},
+		},
+		{
+			name:  "email send failure does not return error",
+			email: "user@example.com",
+			setupMock: func(ur *mocks.UserRepository, cs *mocks.CacheStore, es *mocks.EmailSender) {
+				ur.EXPECT().GetByEmail(mock.Anything, "user@example.com").
+					Return(&model.User{ID: "user-123", Email: "user@example.com"}, nil)
+				cs.EXPECT().Set(mock.Anything, mock.Anything, "user-123", 1*time.Hour).Return(nil)
+				es.EXPECT().SendPasswordResetEmail(mock.Anything, mock.Anything, mock.Anything).
+					Return(fmt.Errorf("smtp error"))
+			},
+		},
+		{
+			name:  "cache error returns error",
+			email: "user@example.com",
+			setupMock: func(ur *mocks.UserRepository, cs *mocks.CacheStore, _ *mocks.EmailSender) {
+				ur.EXPECT().GetByEmail(mock.Anything, "user@example.com").
+					Return(&model.User{ID: "user-123", Email: "user@example.com"}, nil)
+				cs.EXPECT().Set(mock.Anything, mock.Anything, "user-123", 1*time.Hour).
+					Return(fmt.Errorf("redis error"))
+			},
+			wantErr: true,
+		},
+		{
+			name:  "db error returns error",
+			email: "user@example.com",
+			setupMock: func(ur *mocks.UserRepository, _ *mocks.CacheStore, _ *mocks.EmailSender) {
+				ur.EXPECT().GetByEmail(mock.Anything, "user@example.com").
+					Return(nil, fmt.Errorf("db connection: %w", errors.New("timeout")))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ur := mocks.NewUserRepository(t)
+			cs := mocks.NewCacheStore(t)
+			es := mocks.NewEmailSender(t)
+			tt.setupMock(ur, cs, es)
+
+			svc := New(ur, mocks.NewPasswordHasher(t), cs, es, mocks.NewTokenRevoker(t), zap.NewNop())
+			err := svc.RequestPasswordReset(ctx, tt.email)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestService_ResetPassword(t *testing.T) {
+	ctx := t.Context()
+
+	tests := []struct {
+		name      string
+		token     string
+		password  string
+		setupMock func(h *mocks.PasswordHasher, ur *mocks.UserRepository, tr *mocks.TokenRevoker, cs *mocks.CacheStore)
+		wantErr   string
+	}{
+		{
+			name:     "successful password reset",
+			token:    "valid-token",
+			password: "newpassword123",
+			setupMock: func(h *mocks.PasswordHasher, ur *mocks.UserRepository, tr *mocks.TokenRevoker, cs *mocks.CacheStore) {
+				cs.EXPECT().Get(mock.Anything, "reset:valid-token").Return("user-123", nil)
+				h.EXPECT().Hash("newpassword123").Return("new-hash", nil)
+				ur.EXPECT().UpdatePassword(mock.Anything, "user-123", "new-hash").Return(nil)
+				tr.EXPECT().RevokeByUserID(mock.Anything, "user-123").Return(nil)
+				cs.EXPECT().Delete(mock.Anything, "reset:valid-token").Return(nil)
+			},
+		},
+		{
+			name:     "invalid token",
+			token:    "expired-token",
+			password: "newpassword123",
+			setupMock: func(_ *mocks.PasswordHasher, _ *mocks.UserRepository, _ *mocks.TokenRevoker, cs *mocks.CacheStore) {
+				cs.EXPECT().Get(mock.Anything, "reset:expired-token").
+					Return("", domainerrors.ErrKeyNotFound)
+			},
+			wantErr: domainerrors.ErrInvalidResetToken.Error(),
+		},
+		{
+			name:     "password too short",
+			token:    "valid-token",
+			password: "short",
+			setupMock: func(_ *mocks.PasswordHasher, _ *mocks.UserRepository, _ *mocks.TokenRevoker, _ *mocks.CacheStore) {
+				// validatePassword fails before any external calls
+			},
+			wantErr: "password: must be at least 8 characters",
+		},
+		{
+			name:     "revoke failure does not return error",
+			token:    "valid-token",
+			password: "newpassword123",
+			setupMock: func(h *mocks.PasswordHasher, ur *mocks.UserRepository, tr *mocks.TokenRevoker, cs *mocks.CacheStore) {
+				cs.EXPECT().Get(mock.Anything, "reset:valid-token").Return("user-123", nil)
+				h.EXPECT().Hash("newpassword123").Return("new-hash", nil)
+				ur.EXPECT().UpdatePassword(mock.Anything, "user-123", "new-hash").Return(nil)
+				tr.EXPECT().RevokeByUserID(mock.Anything, "user-123").
+					Return(fmt.Errorf("db error"))
+				cs.EXPECT().Delete(mock.Anything, "reset:valid-token").Return(nil)
+			},
+			// wantErr пустой — ошибка revoke не пробрасывается
+		},
+		{
+			name:     "delete token failure does not return error",
+			token:    "valid-token",
+			password: "newpassword123",
+			setupMock: func(h *mocks.PasswordHasher, ur *mocks.UserRepository, tr *mocks.TokenRevoker, cs *mocks.CacheStore) {
+				cs.EXPECT().Get(mock.Anything, "reset:valid-token").Return("user-123", nil)
+				h.EXPECT().Hash("newpassword123").Return("new-hash", nil)
+				ur.EXPECT().UpdatePassword(mock.Anything, "user-123", "new-hash").Return(nil)
+				tr.EXPECT().RevokeByUserID(mock.Anything, "user-123").Return(nil)
+				cs.EXPECT().Delete(mock.Anything, "reset:valid-token").
+					Return(fmt.Errorf("redis error"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := mocks.NewPasswordHasher(t)
+			ur := mocks.NewUserRepository(t)
+			tr := mocks.NewTokenRevoker(t)
+			cs := mocks.NewCacheStore(t)
+			tt.setupMock(h, ur, tr, cs)
+
+			svc := New(ur, h, cs, mocks.NewEmailSender(t), tr, zap.NewNop())
+			err := svc.ResetPassword(ctx, tt.token, tt.password)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }

@@ -13,6 +13,7 @@ packages:
       PasswordHasher:
       CacheStore:
       EmailSender:
+      TokenRevoker:
   github.com/sanchey92/sso/internal/usecase/auth:
     interfaces:
       UserGetter:
@@ -22,7 +23,7 @@ packages:
     interfaces:
       TokenGenerator:
       RefreshTokenRepository:
-  github.com/sanchey92/sso/internal/adapter/driving/rest:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler:
     interfaces:
       UserService:
       AuthService:

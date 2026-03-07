@@ -12,4 +12,5 @@ var (
 	ErrTokenRevoked             = errors.New("token revoked")
 	ErrInvalidVerificationToken = errors.New("invalid or expired token")
 	ErrKeyNotFound              = errors.New("key not found")
+	ErrInvalidResetToken        = errors.New("invalid or expired reset token")
 )

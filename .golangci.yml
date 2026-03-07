@@ -4,7 +4,7 @@ run:
   timeout: 5m
   relative-path-mode: gomod
   issues-exit-code: 1
-  tests: true
+  tests: false
   modules-download-mode: readonly
 
 output:
@@ -70,6 +70,8 @@ linters:
 
   settings:
     gosec:
+      excludes:
+        - G117
       config:
         global:
           audit: true

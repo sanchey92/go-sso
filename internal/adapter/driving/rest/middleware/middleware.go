@@ -1,4 +1,4 @@
-package rest
+package middleware
 
 import (
 	"context"
@@ -60,7 +60,7 @@ func Logging(log *zap.Logger) func(http.Handler) http.Handler {
 func Recovery(log *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
+			defer func() { //nolint:contextcheck // context is available via r.Context() in deferred recover
 				if err := recover(); err != nil {
 					log.Error("panic recovered",
 						zap.Any("error", err),

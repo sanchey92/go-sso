@@ -20,12 +20,21 @@ const (
 	verifyKeyPrefix = "verify:"
 	verificationTTL = 24 * time.Hour
 	verifyTokenLen  = 32
+
+	resetKeyPrefix = "reset:"
+	resetTTL       = 1 * time.Hour
+	resetTokenLen  = 32
 )
 
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
 	UpdateEmailVerified(ctx context.Context, userID string, verified bool) error
+	UpdatePassword(ctx context.Context, userID, passwordHash string) error
+}
+
+type TokenRevoker interface {
+	RevokeByUserID(ctx context.Context, userID string) error
 }
 
 type PasswordHasher interface {
@@ -40,23 +49,33 @@ type CacheStore interface {
 
 type EmailSender interface {
 	SendVerificationEmail(_ context.Context, toEmail, token string) error
+	SendPasswordResetEmail(_ context.Context, toEmail, token string) error
 }
 
 type Service struct {
-	userRepo UserRepository
-	hasher   PasswordHasher
-	cache    CacheStore
-	email    EmailSender
-	log      *zap.Logger
+	userRepo     UserRepository
+	hasher       PasswordHasher
+	cache        CacheStore
+	email        EmailSender
+	tokenRevoker TokenRevoker
+	log          *zap.Logger
 }
 
-func New(ur UserRepository, h PasswordHasher, cs CacheStore, es EmailSender, log *zap.Logger) *Service {
+func New(
+	ur UserRepository,
+	h PasswordHasher,
+	cs CacheStore,
+	es EmailSender,
+	tr TokenRevoker,
+	log *zap.Logger,
+) *Service {
 	return &Service{
-		userRepo: ur,
-		hasher:   h,
-		cache:    cs,
-		email:    es,
-		log:      log,
+		userRepo:     ur,
+		hasher:       h,
+		cache:        cs,
+		email:        es,
+		tokenRevoker: tr,
+		log:          log,
 	}
 }
 
@@ -127,6 +146,80 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 		)
 	}
 	s.log.Info("email verified", zap.String("user_id", userID))
+	return nil
+}
+
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, domainerrors.ErrUserNotFound) {
+			s.log.Info("password reset requested for non-existent email",
+				zap.String("email", email),
+			)
+			return nil
+		}
+		return fmt.Errorf("get user by email: %w", err)
+	}
+
+	token, err := crypto.GenerateRandomToken(resetTokenLen)
+	if err != nil {
+		return fmt.Errorf("generate reset token: %w", err)
+	}
+
+	key := resetKeyPrefix + token
+	if err = s.cache.Set(ctx, key, user.ID, resetTTL); err != nil {
+		return fmt.Errorf("save reset token: %w", err)
+	}
+
+	if err = s.email.SendPasswordResetEmail(ctx, user.Email, token); err != nil {
+		s.log.Error("failed to send password reset email",
+			zap.Error(err),
+			zap.String("user_id", user.ID),
+		)
+	}
+	s.log.Info("password reset requested", zap.String("user_id", user.ID))
+	return nil
+}
+
+func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) error {
+	if err := validatePassword(newPassword); err != nil {
+		return err
+	}
+
+	key := resetKeyPrefix + token
+	userID, err := s.cache.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, domainerrors.ErrKeyNotFound) {
+			return domainerrors.ErrInvalidResetToken
+		}
+		return fmt.Errorf("get reset token: %w", err)
+	}
+
+	hash, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	if err = s.userRepo.UpdatePassword(ctx, userID, hash); err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	if err = s.tokenRevoker.RevokeByUserID(ctx, userID); err != nil {
+		s.log.Error("failed to revoke refresh tokens after password reset",
+			zap.Error(err),
+			zap.String("user_id", userID),
+		)
+	}
+
+	if err = s.cache.Delete(ctx, key); err != nil {
+		s.log.Error("failed to delete reset token",
+			zap.Error(err),
+			zap.String("user_id", userID),
+		)
+	}
+	s.log.Info("password reset completed", zap.String("user_id", userID))
 	return nil
 }
 
