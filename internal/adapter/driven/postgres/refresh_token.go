@@ -93,3 +93,15 @@ func (s *Storage) RevokeByFamilyID(ctx context.Context, familyID string) error {
 	}
 	return nil
 }
+
+func (s *Storage) RevokeByUserID(ctx context.Context, userID string) error {
+	query := `UPDATE refresh_tokens
+              SET revoked = true
+              WHERE user_id = $1 AND revoked = false`
+
+	_, err := s.pool.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("revoke refresh token by user id: %w", err)
+	}
+	return nil
+}

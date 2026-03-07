@@ -78,3 +78,18 @@ func (s *Storage) UpdateEmailVerified(ctx context.Context, userID string, verifi
 	}
 	return nil
 }
+
+func (s *Storage) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	query := `UPDATE users
+              SET password_hash = $2, updated_at = now()
+              WHERE id = $1`
+
+	result, err := s.pool.Exec(ctx, query, userID, passwordHash)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return domainerrors.ErrUserNotFound
+	}
+	return nil
+}
