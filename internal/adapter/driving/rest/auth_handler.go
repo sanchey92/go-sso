@@ -9,21 +9,29 @@ import (
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-type AuthService interface {
+type UserService interface {
 	Register(ctx context.Context, email, password string) (*model.User, error)
-	Login(ctx context.Context, email, password string) (*model.TokenPair, error)
-	RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error)
-	RevokeToken(ctx context.Context, refreshToken string) error
 	VerifyEmail(ctx context.Context, token string) error
 }
 
-type AuthHandler struct {
-	authSrv AuthService
-	log     *zap.Logger
+type AuthService interface {
+	Login(ctx context.Context, email, password string) (*model.TokenPair, error)
 }
 
-func NewAuthHandler(auth AuthService, log *zap.Logger) *AuthHandler {
-	return &AuthHandler{authSrv: auth, log: log}
+type TokenService interface {
+	RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error)
+	RevokeToken(ctx context.Context, refreshToken string) error
+}
+
+type AuthHandler struct {
+	userSvc  UserService
+	authSvc  AuthService
+	tokenSvc TokenService
+	log      *zap.Logger
+}
+
+func NewAuthHandler(us UserService, as AuthService, ts TokenService, log *zap.Logger) *AuthHandler {
+	return &AuthHandler{userSvc: us, authSvc: as, tokenSvc: ts, log: log}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +42,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.authSrv.Register(r.Context(), req.Email, req.Password)
+	user, err := h.userSvc.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		handleServiceError(w, r, err, h.log)
 		return
@@ -53,7 +61,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.authSrv.Login(r.Context(), req.Email, req.Password)
+	pair, err := h.authSvc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		handleServiceError(w, r, err, h.log)
 		return
@@ -72,7 +80,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
 		return
 	}
-	pair, err := h.authSrv.RefreshTokens(r.Context(), req.RefreshToken)
+	pair, err := h.tokenSvc.RefreshTokens(r.Context(), req.RefreshToken)
 	if err != nil {
 		handleServiceError(w, r, err, h.log)
 		return
@@ -91,7 +99,7 @@ func (h *AuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
 		return
 	}
-	if err := h.authSrv.RevokeToken(r.Context(), req.RefreshToken); err != nil {
+	if err := h.tokenSvc.RevokeToken(r.Context(), req.RefreshToken); err != nil {
 		handleServiceError(w, r, err, h.log)
 		return
 	}
@@ -109,7 +117,7 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.authSrv.VerifyEmail(r.Context(), req.Token); err != nil {
+	if err := h.userSvc.VerifyEmail(r.Context(), req.Token); err != nil {
 		handleServiceError(w, r, err, h.log)
 		return
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
+	"github.com/sanchey92/sso/pkg/crypto"
 )
 
 type Claims struct {
@@ -95,6 +96,15 @@ func (s *Service) ValidateToken(tokenStr string) (*Claims, error) {
 		Issuer:   claims.Issuer,
 		Audience: aud,
 	}, nil
+}
+
+func (s *Service) GenerateRefreshToken() (string, string, error) {
+	raw, err := crypto.GenerateRandomToken(32)
+	if err != nil {
+		return "", "", fmt.Errorf("generate refresh token: %w", err)
+	}
+	hash := crypto.HashToken(raw)
+	return raw, hash, nil
 }
 
 func (s *Service) GetJWKS() *JWKS {

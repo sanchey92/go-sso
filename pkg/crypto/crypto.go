@@ -1,4 +1,4 @@
-package auth
+package crypto
 
 import (
 	"crypto/rand"
@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func generateRandomToken(length int) (string, error) {
+func GenerateRandomToken(length int) (string, error) {
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("read random bytes: %w", err)
@@ -18,12 +18,12 @@ func generateRandomToken(length int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(bytes), nil
 }
 
-func hashToken(token string) string {
+func HashToken(token string) string {
 	hash := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hash[:])
 }
 
-func generateUUID() (string, error) {
+func GenerateUUID() (string, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return "", fmt.Errorf("generate uuid: %w", err)

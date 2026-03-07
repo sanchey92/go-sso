@@ -17,6 +17,8 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/internal/usecase/auth"
+	"github.com/sanchey92/sso/internal/usecase/token"
+	"github.com/sanchey92/sso/internal/usecase/user"
 	"github.com/sanchey92/sso/pkg/logger"
 )
 
@@ -46,8 +48,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("jwt: %w", err)
 	}
 
-	authService := initAuthService(storage, cache, jwtService, &cfg.Auth, log)
-	httpServer := initHTTPServer(&cfg.Server.HTTP, authService, log)
+	h := hasher.New(hasher.DefaultConfig())
+	emailSender := email.NewLogSender(log, "http://localhost:8080")
+
+	tokenService := token.New(jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, log)
+	userService := user.New(storage, h, cache, emailSender, log)
+	authService := auth.New(storage, h, tokenService, log)
+
+	httpServer := initHTTPServer(&cfg.Server.HTTP, userService, authService, tokenService, log)
 
 	return &App{
 		cfg:        cfg,
@@ -139,22 +147,8 @@ func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 	return s, nil
 }
 
-func initAuthService(storage *postgres.Storage, cache *redis.Cache, jwtService *jwtadapter.Service, cfg *config.AuthConfig, log *zap.Logger) *auth.Service {
-	return auth.New(
-		hasher.New(hasher.DefaultConfig()),
-		jwtService,
-		storage,
-		storage,
-		cache,
-		email.NewLogSender(log, "http://localhost:8080"),
-		cfg.AccessTokenTTL,
-		cfg.RefreshTokenTTL,
-		log,
-	)
-}
-
-func initHTTPServer(cfg *config.HTTPServerConfig, authService *auth.Service, log *zap.Logger) *rest.Server {
-	authHandler := rest.NewAuthHandler(authService, log)
+func initHTTPServer(cfg *config.HTTPServerConfig, userSvc *user.Service, authSvc *auth.Service, tokenSvc *token.Service, log *zap.Logger) *rest.Server {
+	authHandler := rest.NewAuthHandler(userSvc, authSvc, tokenSvc, log)
 	return rest.NewServer(&rest.Config{
 		Host:         cfg.Host,
 		Port:         cfg.Port,

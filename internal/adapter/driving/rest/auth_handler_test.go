@@ -16,11 +16,13 @@ import (
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-func newHandler(t *testing.T) (*AuthHandler, *mocks.AuthService) {
+func newHandler(t *testing.T) (*AuthHandler, *mocks.UserService, *mocks.AuthService, *mocks.TokenService) {
 	t.Helper()
-	svc := mocks.NewAuthService(t)
-	h := NewAuthHandler(svc, zap.NewNop())
-	return h, svc
+	us := mocks.NewUserService(t)
+	as := mocks.NewAuthService(t)
+	ts := mocks.NewTokenService(t)
+	h := NewAuthHandler(us, as, ts, zap.NewNop())
+	return h, us, as, ts
 }
 
 func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
@@ -35,14 +37,14 @@ func TestRegister(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		mockSetup  func(svc *mocks.AuthService)
+		mockSetup  func(svc *mocks.UserService)
 		wantStatus int
 		wantBody   string
 	}{
 		{
 			name: "success",
 			body: `{"email":"test@example.com","password":"secret123"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().Register(mock.Anything, "test@example.com", "secret123").
 					Return(&model.User{ID: "user-123"}, nil)
 			},
@@ -52,14 +54,14 @@ func TestRegister(t *testing.T) {
 		{
 			name:       "invalid json",
 			body:       `{invalid`,
-			mockSetup:  func(_ *mocks.AuthService) {},
+			mockSetup:  func(_ *mocks.UserService) {},
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
 		},
 		{
 			name: "email already exists",
 			body: `{"email":"dup@example.com","password":"secret123"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().Register(mock.Anything, "dup@example.com", "secret123").
 					Return(nil, domainerrors.ErrEmailAlreadyExists)
 			},
@@ -69,7 +71,7 @@ func TestRegister(t *testing.T) {
 		{
 			name: "validation error",
 			body: `{"email":"bad","password":"short"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().Register(mock.Anything, "bad", "short").
 					Return(nil, fmt.Errorf("email: invalid format"))
 			},
@@ -79,7 +81,7 @@ func TestRegister(t *testing.T) {
 		{
 			name: "internal error",
 			body: `{"email":"test@example.com","password":"secret123"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().Register(mock.Anything, "test@example.com", "secret123").
 					Return(nil, fmt.Errorf("hash password: %w", fmt.Errorf("something broke")))
 			},
@@ -90,8 +92,8 @@ func TestRegister(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newHandler(t)
-			tt.mockSetup(svc)
+			h, us, _, _ := newHandler(t)
+			tt.mockSetup(us)
 
 			rec := doRequest(h.Register, http.MethodPost, "/api/v1/auth/register", tt.body)
 
@@ -154,8 +156,8 @@ func TestLogin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newHandler(t)
-			tt.mockSetup(svc)
+			h, _, as, _ := newHandler(t)
+			tt.mockSetup(as)
 
 			rec := doRequest(h.Login, http.MethodPost, "/api/v1/auth/login", tt.body)
 
@@ -169,14 +171,14 @@ func TestRefresh(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		mockSetup  func(svc *mocks.AuthService)
+		mockSetup  func(svc *mocks.TokenService)
 		wantStatus int
 		wantBody   string
 	}{
 		{
 			name: "success",
 			body: `{"refresh_token":"old-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.TokenService) {
 				svc.EXPECT().RefreshTokens(mock.Anything, "old-token").
 					Return(&model.TokenPair{
 						AccessToken:  "new-access",
@@ -190,14 +192,14 @@ func TestRefresh(t *testing.T) {
 		{
 			name:       "invalid json",
 			body:       `{`,
-			mockSetup:  func(_ *mocks.AuthService) {},
+			mockSetup:  func(_ *mocks.TokenService) {},
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
 		},
 		{
 			name: "token expired",
 			body: `{"refresh_token":"expired-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.TokenService) {
 				svc.EXPECT().RefreshTokens(mock.Anything, "expired-token").
 					Return(nil, domainerrors.ErrTokenExpired)
 			},
@@ -207,7 +209,7 @@ func TestRefresh(t *testing.T) {
 		{
 			name: "token revoked (replay)",
 			body: `{"refresh_token":"reused-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.TokenService) {
 				svc.EXPECT().RefreshTokens(mock.Anything, "reused-token").
 					Return(nil, domainerrors.ErrTokenRevoked)
 			},
@@ -218,8 +220,8 @@ func TestRefresh(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newHandler(t)
-			tt.mockSetup(svc)
+			h, _, _, ts := newHandler(t)
+			tt.mockSetup(ts)
 
 			rec := doRequest(h.Refresh, http.MethodPost, "/api/v1/auth/token/refresh", tt.body)
 
@@ -233,14 +235,14 @@ func TestVerifyEmail(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		mockSetup  func(svc *mocks.AuthService)
+		mockSetup  func(svc *mocks.UserService)
 		wantStatus int
 		wantBody   string
 	}{
 		{
 			name: "success",
 			body: `{"token":"valid-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().VerifyEmail(mock.Anything, "valid-token").Return(nil)
 			},
 			wantStatus: http.StatusOK,
@@ -249,28 +251,28 @@ func TestVerifyEmail(t *testing.T) {
 		{
 			name:       "invalid json",
 			body:       `{bad`,
-			mockSetup:  func(_ *mocks.AuthService) {},
+			mockSetup:  func(_ *mocks.UserService) {},
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
 		},
 		{
 			name:       "empty token",
 			body:       `{"token":""}`,
-			mockSetup:  func(_ *mocks.AuthService) {},
+			mockSetup:  func(_ *mocks.UserService) {},
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"error":"token is required","code":"VALIDATION_ERROR"}`,
 		},
 		{
 			name:       "missing token field",
 			body:       `{}`,
-			mockSetup:  func(_ *mocks.AuthService) {},
+			mockSetup:  func(_ *mocks.UserService) {},
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"error":"token is required","code":"VALIDATION_ERROR"}`,
 		},
 		{
 			name: "invalid verification token",
 			body: `{"token":"expired-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().VerifyEmail(mock.Anything, "expired-token").
 					Return(domainerrors.ErrInvalidVerificationToken)
 			},
@@ -280,7 +282,7 @@ func TestVerifyEmail(t *testing.T) {
 		{
 			name: "internal error",
 			body: `{"token":"some-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.UserService) {
 				svc.EXPECT().VerifyEmail(mock.Anything, "some-token").
 					Return(fmt.Errorf("update email verified: %w", fmt.Errorf("db error")))
 			},
@@ -291,8 +293,8 @@ func TestVerifyEmail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newHandler(t)
-			tt.mockSetup(svc)
+			h, us, _, _ := newHandler(t)
+			tt.mockSetup(us)
 
 			rec := doRequest(h.VerifyEmail, http.MethodPost, "/api/v1/auth/email/verify", tt.body)
 
@@ -306,14 +308,14 @@ func TestRevoke(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
-		mockSetup  func(svc *mocks.AuthService)
+		mockSetup  func(svc *mocks.TokenService)
 		wantStatus int
 		wantBody   string
 	}{
 		{
 			name: "success",
 			body: `{"refresh_token":"tok-to-revoke"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.TokenService) {
 				svc.EXPECT().RevokeToken(mock.Anything, "tok-to-revoke").
 					Return(nil)
 			},
@@ -323,14 +325,14 @@ func TestRevoke(t *testing.T) {
 		{
 			name:       "invalid json",
 			body:       `[]`,
-			mockSetup:  func(_ *mocks.AuthService) {},
+			mockSetup:  func(_ *mocks.TokenService) {},
 			wantStatus: http.StatusBadRequest,
 			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
 		},
 		{
 			name: "invalid token",
 			body: `{"refresh_token":"bad-token"}`,
-			mockSetup: func(svc *mocks.AuthService) {
+			mockSetup: func(svc *mocks.TokenService) {
 				svc.EXPECT().RevokeToken(mock.Anything, "bad-token").
 					Return(domainerrors.ErrInvalidToken)
 			},
@@ -341,8 +343,8 @@ func TestRevoke(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newHandler(t)
-			tt.mockSetup(svc)
+			h, _, _, ts := newHandler(t)
+			tt.mockSetup(ts)
 
 			rec := doRequest(h.Revoke, http.MethodPost, "/api/v1/auth/token/revoke", tt.body)
 
