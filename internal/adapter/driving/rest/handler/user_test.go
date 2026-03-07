@@ -91,6 +91,147 @@ func TestRegister(t *testing.T) {
 	}
 }
 
+func TestRequestPasswordReset(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		mockSetup  func(svc *mocks.UserService)
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name: "success",
+			body: `{"email":"user@example.com"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().RequestPasswordReset(mock.Anything, "user@example.com").Return(nil)
+			},
+			wantStatus: http.StatusOK,
+			wantBody:   `{"message":"if the email exists, a password reset link has been sent"}`,
+		},
+		{
+			name:       "invalid json",
+			body:       `{bad`,
+			mockSetup:  func(_ *mocks.UserService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
+		},
+		{
+			name: "non-existent email still returns 200 (anti-enumeration)",
+			body: `{"email":"nobody@example.com"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().RequestPasswordReset(mock.Anything, "nobody@example.com").Return(nil)
+			},
+			wantStatus: http.StatusOK,
+			wantBody:   `{"message":"if the email exists, a password reset link has been sent"}`,
+		},
+		{
+			name: "internal error",
+			body: `{"email":"user@example.com"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().RequestPasswordReset(mock.Anything, "user@example.com").
+					Return(fmt.Errorf("save reset token: %w", fmt.Errorf("redis error")))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"error":"internal server error","code":"INTERNAL_ERROR"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, us := newUserHandler(t)
+			tt.mockSetup(us)
+
+			rec := doRequest(h.RequestPasswordReset, http.MethodPost, "/api/v1/auth/password/reset-request", tt.body)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			assert.JSONEq(t, tt.wantBody, rec.Body.String())
+		})
+	}
+}
+
+func TestResetPassword(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		mockSetup  func(svc *mocks.UserService)
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name: "success",
+			body: `{"token":"valid-token","new_password":"newpassword123"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().ResetPassword(mock.Anything, "valid-token", "newpassword123").Return(nil)
+			},
+			wantStatus: http.StatusOK,
+			wantBody:   `{"message":"password has been reset successfully"}`,
+		},
+		{
+			name:       "invalid json",
+			body:       `{bad`,
+			mockSetup:  func(_ *mocks.UserService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
+		},
+		{
+			name:       "empty token",
+			body:       `{"token":"","new_password":"newpassword123"}`,
+			mockSetup:  func(_ *mocks.UserService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"token is required","code":"VALIDATION_ERROR"}`,
+		},
+		{
+			name:       "missing token field",
+			body:       `{"new_password":"newpassword123"}`,
+			mockSetup:  func(_ *mocks.UserService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"token is required","code":"VALIDATION_ERROR"}`,
+		},
+		{
+			name: "invalid reset token",
+			body: `{"token":"expired-token","new_password":"newpassword123"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().ResetPassword(mock.Anything, "expired-token", "newpassword123").
+					Return(domainerrors.ErrInvalidResetToken)
+			},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"invalid or expired reset token","code":"INVALID_RESET_TOKEN"}`,
+		},
+		{
+			name: "password validation error",
+			body: `{"token":"valid-token","new_password":"short"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().ResetPassword(mock.Anything, "valid-token", "short").
+					Return(fmt.Errorf("password: must be at least 8 characters"))
+			},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"password: must be at least 8 characters","code":"VALIDATION_ERROR"}`,
+		},
+		{
+			name: "internal error",
+			body: `{"token":"valid-token","new_password":"newpassword123"}`,
+			mockSetup: func(svc *mocks.UserService) {
+				svc.EXPECT().ResetPassword(mock.Anything, "valid-token", "newpassword123").
+					Return(fmt.Errorf("update password: %w", fmt.Errorf("db error")))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"error":"internal server error","code":"INTERNAL_ERROR"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, us := newUserHandler(t)
+			tt.mockSetup(us)
+
+			rec := doRequest(h.ResetPassword, http.MethodPost, "/api/v1/auth/password/reset", tt.body)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			assert.JSONEq(t, tt.wantBody, rec.Body.String())
+		})
+	}
+}
+
 func TestVerifyEmail(t *testing.T) {
 	tests := []struct {
 		name       string

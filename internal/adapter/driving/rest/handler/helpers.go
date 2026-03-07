@@ -59,6 +59,8 @@ func handleServiceError(w http.ResponseWriter, r *http.Request, err error, log *
 		respondError(w, http.StatusForbidden, "email not verified", "EMAIL_NOT_VERIFIED")
 	case errors.Is(err, domainerrors.ErrInvalidVerificationToken):
 		respondError(w, http.StatusBadRequest, "invalid or expired verification token", "INVALID_VERIFICATION_TOKEN")
+	case errors.Is(err, domainerrors.ErrInvalidResetToken):
+		respondError(w, http.StatusBadRequest, "invalid or expired reset token", "INVALID_RESET_TOKEN")
 	case errors.Is(err, domainerrors.ErrInvalidToken):
 		respondError(w, http.StatusUnauthorized, "invalid token", "INVALID_TOKEN")
 	case errors.Is(err, domainerrors.ErrTokenExpired):

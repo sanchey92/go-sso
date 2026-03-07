@@ -74,6 +74,8 @@ func (s *Server) setupRoutes() {
 		r.Post("/token/refresh", s.tokenHandler.Refresh)
 		r.Post("/token/revoke", s.tokenHandler.Revoke)
 		r.Post("/email/verify", s.userHandler.VerifyEmail)
+		r.Post("/password/reset-request", s.userHandler.RequestPasswordReset)
+		r.Post("/password/reset", s.userHandler.ResetPassword)
 	})
 
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -23,7 +23,7 @@ internal/
 
 **Phase 1: Foundation** — in progress
 
-Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login, refresh token rotation with replay detection, HTTP server + middleware (chi), REST auth handlers, email verification.
+Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging (zap), PostgreSQL (pgx), Redis (go-redis), migrations (goose), domain models, password hasher (argon2id), JWT service (EdDSA), use case Registration, use case Login, refresh token rotation with replay detection, HTTP server + middleware (chi), REST auth handlers, email verification, password reset flow.
 
 ### API Endpoints
 
@@ -34,10 +34,11 @@ Done: project structure, Taskfile + linter + Docker, config (cleanenv), logging 
 | POST | `/api/v1/auth/token/refresh` | Ротация refresh token | 200 |
 | POST | `/api/v1/auth/token/revoke` | Отзыв refresh token | 204 |
 | POST | `/api/v1/auth/email/verify` | Верификация email по токену | 200 |
+| POST | `/api/v1/auth/password/reset-request` | Запрос сброса пароля | 200 |
+| POST | `/api/v1/auth/password/reset` | Сброс пароля по токену | 200 |
 | GET | `/healthz` | Health check | 200 |
 
 ### Roadmap
-- Password reset flow
 - Rate limiting (Redis)
 - main.go + DI + graceful shutdown
 
