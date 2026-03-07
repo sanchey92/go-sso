@@ -63,3 +63,18 @@ func (s *Storage) GetByEmail(ctx context.Context, email string) (*model.User, er
 	user.Status = model.UserStatus(status)
 	return &user, nil
 }
+
+func (s *Storage) UpdateEmailVerified(ctx context.Context, userID string, verified bool) error {
+	query := `UPDATE users
+	          SET email_verified = $1, updated_at = now()
+			  WHERE id = $2`
+
+	result, err := s.pool.Exec(ctx, query, verified, userID)
+	if err != nil {
+		return fmt.Errorf("update email_verified: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return domainerrors.ErrUserNotFound
+	}
+	return nil
+}

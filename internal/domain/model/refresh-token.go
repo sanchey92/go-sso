@@ -13,3 +13,9 @@ type RefreshToken struct {
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }
+
+type TokenPair struct {
+	AccessToken  string //nolint:gosec // response DTO field, not a hardcoded secret
+	RefreshToken string //nolint:gosec // response DTO field, not a hardcoded secret
+	ExpiresIn    int64
+}

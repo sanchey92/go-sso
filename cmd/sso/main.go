@@ -6,6 +6,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/sanchey92/sso/internal/app"
 	"github.com/sanchey92/sso/internal/config"
 )
 
@@ -16,10 +17,10 @@ func main() {
 
 	cfg := config.MustLoad(os.Getenv("CONFIG_PATH"))
 
-	app, err := NewApp(cfg)
+	a, err := app.NewApp(cfg)
 	if err != nil {
-		log.Fatalf("failed to init app: %v", err)
+		log.Fatalf("failed to init usecase: %v", err)
 	}
 
-	app.Run()
+	a.Run()
 }

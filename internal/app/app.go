@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -9,13 +9,14 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/sanchey92/sso/internal/adapter/driven/email"
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
 	jwtadapter "github.com/sanchey92/sso/internal/adapter/driven/jwt"
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
-	"github.com/sanchey92/sso/internal/app/auth"
 	"github.com/sanchey92/sso/internal/config"
+	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/pkg/logger"
 )
 
@@ -45,7 +46,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, fmt.Errorf("jwt: %w", err)
 	}
 
-	authService := initAuthService(storage, jwtService, &cfg.Auth, log)
+	authService := initAuthService(storage, cache, jwtService, &cfg.Auth, log)
 	httpServer := initHTTPServer(&cfg.Server.HTTP, authService, log)
 
 	return &App{
@@ -67,7 +68,7 @@ func (a *App) Run() {
 		}
 	}()
 
-	a.log.Info("app started")
+	a.log.Info("usecase started")
 
 	<-ctx.Done()
 	a.Stop()
@@ -85,7 +86,7 @@ func (a *App) Stop() {
 	if err := a.cache.Close(); err != nil {
 		a.log.Error("failed close redis", zap.Error(err))
 	}
-	a.log.Info("app stopped")
+	a.log.Info("usecase stopped")
 }
 
 func initLogger(cfg config.LogConfig) *zap.Logger {
@@ -138,12 +139,14 @@ func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 	return s, nil
 }
 
-func initAuthService(storage *postgres.Storage, jwtService *jwtadapter.Service, cfg *config.AuthConfig, log *zap.Logger) *auth.Service {
+func initAuthService(storage *postgres.Storage, cache *redis.Cache, jwtService *jwtadapter.Service, cfg *config.AuthConfig, log *zap.Logger) *auth.Service {
 	return auth.New(
 		hasher.New(hasher.DefaultConfig()),
 		jwtService,
 		storage,
 		storage,
+		cache,
+		email.NewLogSender(log, "http://localhost:8080"),
 		cfg.AccessTokenTTL,
 		cfg.RefreshTokenTTL,
 		log,

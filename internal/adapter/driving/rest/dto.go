@@ -28,3 +28,11 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
 }
+
+type verifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+type messageResponse struct {
+	Message string `json:"message"`
+}

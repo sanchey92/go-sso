@@ -60,6 +60,7 @@ func (s *Server) setupRoutes() {
 		r.Post("/login", s.authHandlers.Login)
 		r.Post("/token/refresh", s.authHandlers.Refresh)
 		r.Post("/token/revoke", s.authHandlers.Revoke)
+		r.Post("/email/verify", s.authHandlers.VerifyEmail)
 
 	})
 

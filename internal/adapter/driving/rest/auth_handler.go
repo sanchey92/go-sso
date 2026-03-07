@@ -4,16 +4,17 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/sanchey92/sso/internal/app/auth"
-	"github.com/sanchey92/sso/internal/domain/model"
 	"go.uber.org/zap"
+
+	"github.com/sanchey92/sso/internal/domain/model"
 )
 
 type AuthService interface {
 	Register(ctx context.Context, email, password string) (*model.User, error)
-	Login(ctx context.Context, email, password string) (*auth.TokenPair, error)
-	RefreshTokens(ctx context.Context, refreshToken string) (*auth.TokenPair, error)
+	Login(ctx context.Context, email, password string) (*model.TokenPair, error)
+	RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error)
 	RevokeToken(ctx context.Context, refreshToken string) error
+	VerifyEmail(ctx context.Context, token string) error
 }
 
 type AuthHandler struct {
@@ -95,4 +96,24 @@ func (h *AuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req verifyEmailRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
+		return
+	}
+	if req.Token == "" {
+		respondError(w, http.StatusBadRequest, "token is required", "VALIDATION_ERROR")
+		return
+	}
+
+	if err := h.authSrv.VerifyEmail(r.Context(), req.Token); err != nil {
+		handleServiceError(w, r, err, h.log)
+		return
+	}
+	respondJSON(w, http.StatusOK, &messageResponse{
+		Message: "email verified successfully",
+	})
 }

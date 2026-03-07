@@ -31,7 +31,7 @@ func TestService_GenerateToken(t *testing.T) {
 	svc, err := NewService(testConfig())
 	require.NoError(t, err)
 
-	token, err := svc.GenerateToken("user-123", "my-app")
+	token, err := svc.GenerateToken("user-123", "my-usecase")
 
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(strings.Split(token, ".")))
@@ -41,7 +41,7 @@ func TestService_ValidateToken_OK(t *testing.T) {
 	svc, err := NewService(testConfig())
 	require.NoError(t, err)
 
-	token, err := svc.GenerateToken("user-123", "my-app")
+	token, err := svc.GenerateToken("user-123", "my-usecase")
 	require.NoError(t, err)
 
 	claims, err := svc.ValidateToken(token)
@@ -49,14 +49,14 @@ func TestService_ValidateToken_OK(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "user-123", claims.Subject)
 	assert.Equal(t, "test-issuer", claims.Issuer)
-	assert.Equal(t, "my-app", claims.Audience)
+	assert.Equal(t, "my-usecase", claims.Audience)
 }
 
 func TestService_ValidateToken_Tampered(t *testing.T) {
 	svc, err := NewService(testConfig())
 	require.NoError(t, err)
 
-	token, err := svc.GenerateToken("user-123", "my-app")
+	token, err := svc.GenerateToken("user-123", "my-usecase")
 	require.NoError(t, err)
 
 	tampered := token[:len(token)-4] + "XXXX"
@@ -72,7 +72,7 @@ func TestService_ValidateToken_Expired(t *testing.T) {
 	svc, err := NewService(cfg)
 	require.NoError(t, err)
 
-	token, err := svc.GenerateToken("user-123", "my-app")
+	token, err := svc.GenerateToken("user-123", "my-usecase")
 	require.NoError(t, err)
 
 	_, err = svc.ValidateToken(token)
@@ -91,7 +91,7 @@ func TestService_ValidateToken_TableDriven(t *testing.T) {
 	svc, err := NewService(testConfig())
 	require.NoError(t, err)
 
-	validToken, err := svc.GenerateToken("user-456", "app-2")
+	validToken, err := svc.GenerateToken("user-456", "usecase-2")
 	require.NoError(t, err)
 
 	tests := []struct {

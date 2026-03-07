@@ -2,11 +2,14 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+
+	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
 type Config struct {
@@ -55,6 +58,31 @@ func NewCache(config *Config, log *zap.Logger) (*Cache, error) {
 func (c *Cache) Close() error {
 	if err := c.client.Close(); err != nil {
 		return fmt.Errorf("redis close: %w", err)
+	}
+	return nil
+}
+
+func (c *Cache) Set(ctx context.Context, key, val string, ttl time.Duration) error {
+	if err := c.client.Set(ctx, key, val, ttl).Err(); err != nil {
+		return fmt.Errorf("redis set %q: %w", key, err)
+	}
+	return nil
+}
+
+func (c *Cache) Get(ctx context.Context, key string) (string, error) {
+	val, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return "", domainerrors.ErrKeyNotFound
+		}
+		return "", fmt.Errorf("redis get %q: %w", key, err)
+	}
+	return val, nil
+}
+
+func (c *Cache) Delete(ctx context.Context, key string) error {
+	if err := c.client.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("redis del %q: %w", key, err)
 	}
 	return nil
 }

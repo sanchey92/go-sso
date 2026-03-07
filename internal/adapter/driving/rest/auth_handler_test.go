@@ -12,7 +12,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/mocks"
-	"github.com/sanchey92/sso/internal/app/auth"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
@@ -115,7 +114,7 @@ func TestLogin(t *testing.T) {
 			body: `{"email":"test@example.com","password":"secret123"}`,
 			mockSetup: func(svc *mocks.AuthService) {
 				svc.EXPECT().Login(mock.Anything, "test@example.com", "secret123").
-					Return(&auth.TokenPair{
+					Return(&model.TokenPair{
 						AccessToken:  "access-tok",
 						RefreshToken: "refresh-tok",
 						ExpiresIn:    900,
@@ -179,7 +178,7 @@ func TestRefresh(t *testing.T) {
 			body: `{"refresh_token":"old-token"}`,
 			mockSetup: func(svc *mocks.AuthService) {
 				svc.EXPECT().RefreshTokens(mock.Anything, "old-token").
-					Return(&auth.TokenPair{
+					Return(&model.TokenPair{
 						AccessToken:  "new-access",
 						RefreshToken: "new-refresh",
 						ExpiresIn:    900,
@@ -223,6 +222,79 @@ func TestRefresh(t *testing.T) {
 			tt.mockSetup(svc)
 
 			rec := doRequest(h.Refresh, http.MethodPost, "/api/v1/auth/token/refresh", tt.body)
+
+			assert.Equal(t, tt.wantStatus, rec.Code)
+			assert.JSONEq(t, tt.wantBody, rec.Body.String())
+		})
+	}
+}
+
+func TestVerifyEmail(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		mockSetup  func(svc *mocks.AuthService)
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name: "success",
+			body: `{"token":"valid-token"}`,
+			mockSetup: func(svc *mocks.AuthService) {
+				svc.EXPECT().VerifyEmail(mock.Anything, "valid-token").Return(nil)
+			},
+			wantStatus: http.StatusOK,
+			wantBody:   `{"message":"email verified successfully"}`,
+		},
+		{
+			name:       "invalid json",
+			body:       `{bad`,
+			mockSetup:  func(_ *mocks.AuthService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"invalid request body","code":"INVALID_REQUEST"}`,
+		},
+		{
+			name:       "empty token",
+			body:       `{"token":""}`,
+			mockSetup:  func(_ *mocks.AuthService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"token is required","code":"VALIDATION_ERROR"}`,
+		},
+		{
+			name:       "missing token field",
+			body:       `{}`,
+			mockSetup:  func(_ *mocks.AuthService) {},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"token is required","code":"VALIDATION_ERROR"}`,
+		},
+		{
+			name: "invalid verification token",
+			body: `{"token":"expired-token"}`,
+			mockSetup: func(svc *mocks.AuthService) {
+				svc.EXPECT().VerifyEmail(mock.Anything, "expired-token").
+					Return(domainerrors.ErrInvalidVerificationToken)
+			},
+			wantStatus: http.StatusBadRequest,
+			wantBody:   `{"error":"invalid or expired verification token","code":"INVALID_VERIFICATION_TOKEN"}`,
+		},
+		{
+			name: "internal error",
+			body: `{"token":"some-token"}`,
+			mockSetup: func(svc *mocks.AuthService) {
+				svc.EXPECT().VerifyEmail(mock.Anything, "some-token").
+					Return(fmt.Errorf("update email verified: %w", fmt.Errorf("db error")))
+			},
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   `{"error":"internal server error","code":"INTERNAL_ERROR"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, svc := newHandler(t)
+			tt.mockSetup(svc)
+
+			rec := doRequest(h.VerifyEmail, http.MethodPost, "/api/v1/auth/email/verify", tt.body)
 
 			assert.Equal(t, tt.wantStatus, rec.Code)
 			assert.JSONEq(t, tt.wantBody, rec.Body.String())

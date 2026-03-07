@@ -17,6 +17,10 @@ import (
 const (
 	minPasswordLen  = 8
 	defaultAudience = "sso"
+
+	verifyKeyPrefix   = "verify:"
+	verificationTTL   = 24 * time.Hour
+	verifyTokenLength = 32
 )
 
 type Hasher interface {
@@ -31,6 +35,7 @@ type TokenService interface {
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
+	UpdateEmailVerified(ctx context.Context, userID string, verified bool) error
 }
 
 type RefreshTokenRepository interface {
@@ -40,10 +45,14 @@ type RefreshTokenRepository interface {
 	RevokeByFamilyID(ctx context.Context, familyID string) error
 }
 
-type TokenPair struct {
-	AccessToken  string //nolint:gosec // response DTO field, not a hardcoded secret
-	RefreshToken string //nolint:gosec // response DTO field, not a hardcoded secret
-	ExpiresIn    int64
+type CacheStore interface {
+	Set(ctx context.Context, key, value string, ttl time.Duration) error
+	Get(ctx context.Context, key string) (string, error)
+	Delete(ctx context.Context, key string) error
+}
+
+type EmailSender interface {
+	SendVerificationEmail(_ context.Context, toEmail, token string) error
 }
 
 type Service struct {
@@ -51,6 +60,8 @@ type Service struct {
 	tokenSrv    TokenService
 	userRepo    UserRepository
 	refreshRepo RefreshTokenRepository
+	cache       CacheStore
+	email       EmailSender
 	accessTTL   time.Duration
 	refreshTTL  time.Duration
 	log         *zap.Logger
@@ -61,6 +72,8 @@ func New(
 	ts TokenService,
 	ur UserRepository,
 	rr RefreshTokenRepository,
+	cs CacheStore,
+	es EmailSender,
 	accessTTL, refreshTTL time.Duration,
 	log *zap.Logger,
 ) *Service {
@@ -69,6 +82,8 @@ func New(
 		tokenSrv:    ts,
 		userRepo:    ur,
 		refreshRepo: rr,
+		cache:       cs,
+		email:       es,
 		accessTTL:   accessTTL,
 		refreshTTL:  refreshTTL,
 		log:         log,
@@ -96,12 +111,56 @@ func (s *Service) Register(ctx context.Context, email, password string) (*model.
 		return nil, fmt.Errorf("create user: %w", err)
 	}
 
+	token, err := generateRandomToken(verifyTokenLength)
+	if err != nil {
+		s.log.Error("failed to generate verification token", zap.Error(err))
+		return user, nil
+	}
+
+	key := verifyKeyPrefix + token
+	if err := s.cache.Set(ctx, key, user.ID, verificationTTL); err != nil {
+		s.log.Error("failed to save verification token", zap.Error(err))
+		return user, nil
+	}
+
+	if err := s.email.SendVerificationEmail(ctx, user.Email, token); err != nil {
+		s.log.Error("failed to send verification email",
+			zap.Error(err),
+			zap.String("user_id", user.ID),
+		)
+	}
+
 	s.log.Info("user registered", zap.String("user_id", user.ID))
 
 	return user, nil
 }
 
-func (s *Service) Login(ctx context.Context, email, password string) (*TokenPair, error) {
+func (s *Service) VerifyEmail(ctx context.Context, token string) error {
+	key := verifyKeyPrefix + token
+
+	userID, err := s.cache.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, domainerrors.ErrKeyNotFound) {
+			return domainerrors.ErrInvalidVerificationToken
+		}
+		return fmt.Errorf("get verification token: %w", err)
+	}
+
+	if err := s.userRepo.UpdateEmailVerified(ctx, userID, true); err != nil {
+		return fmt.Errorf("update email verified: %w", err)
+	}
+
+	if err = s.cache.Delete(ctx, key); err != nil {
+		s.log.Error("failed to delete verification token",
+			zap.Error(err),
+			zap.String("user_id", userID),
+		)
+	}
+	s.log.Info("email verified", zap.String("user_id", userID))
+	return nil
+}
+
+func (s *Service) Login(ctx context.Context, email, password string) (*model.TokenPair, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	user, err := s.userRepo.GetByEmail(ctx, email)
@@ -145,14 +204,14 @@ func (s *Service) Login(ctx context.Context, email, password string) (*TokenPair
 
 	s.log.Info("user logged in", zap.String("user_id", user.ID))
 
-	return &TokenPair{
+	return &model.TokenPair{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(s.accessTTL.Seconds()),
 	}, nil
 }
 
-func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*TokenPair, error) {
+func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error) {
 	tokenHash := hashToken(refreshToken)
 
 	stored, err := s.refreshRepo.GetByHash(ctx, tokenHash)
@@ -193,7 +252,7 @@ func (s *Service) RefreshTokens(ctx context.Context, refreshToken string) (*Toke
 		zap.String("family_id", stored.FamilyID),
 	)
 
-	return &TokenPair{
+	return &model.TokenPair{
 		AccessToken:  newAccessToken,
 		RefreshToken: newRefreshToken,
 		ExpiresIn:    int64(s.accessTTL.Seconds()),

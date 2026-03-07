@@ -7,7 +7,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/bin/sso ./cmd/sso/
+RUN CGO_ENABLED=0 GOOS=linux go build -o /usecase/bin/sso ./cmd/sso/
 
 FROM alpine:3.21
 

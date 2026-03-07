@@ -7,12 +7,14 @@ resolve-type-alias: False
 issue-845-fix: True
 
 packages:
-  github.com/sanchey92/sso/internal/app/auth:
+  github.com/sanchey92/sso/internal/usecase/auth:
     interfaces:
       Hasher:
       TokenService:
       UserRepository:
       RefreshTokenRepository:
+      CacheStore:
+      EmailSender:
   github.com/sanchey92/sso/internal/adapter/driving/rest:
     interfaces:
       AuthService:
