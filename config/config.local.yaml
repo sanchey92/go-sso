@@ -51,7 +51,7 @@ security:
   encryption_key: "stub-encryption-key-change-me-32b" # override via .env SSO_SECURITY_ENCRYPTION_KEY
   rate_limit:
     login:
-      max_attempts: 5
+      max_attempts: 10
       window: 15m
     totp:
       max_attempts: 5

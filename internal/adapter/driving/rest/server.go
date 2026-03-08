@@ -22,12 +22,13 @@ type Config struct {
 }
 
 type Server struct {
-	httpServer   *http.Server
-	router       chi.Router
-	userHandler  *handler.UserHandler
-	authHandler  *handler.AuthHandler
-	tokenHandler *handler.TokenHandler
-	log          *zap.Logger
+	httpServer     *http.Server
+	router         chi.Router
+	userHandler    *handler.UserHandler
+	authHandler    *handler.AuthHandler
+	tokenHandler   *handler.TokenHandler
+	loginRateLimit func(http.Handler) http.Handler
+	log            *zap.Logger
 }
 
 func NewServer(
@@ -35,16 +36,18 @@ func NewServer(
 	userH *handler.UserHandler,
 	authH *handler.AuthHandler,
 	tokenH *handler.TokenHandler,
+	loginRateLimit func(http.Handler) http.Handler,
 	log *zap.Logger,
 ) *Server {
 	r := chi.NewRouter()
 
 	s := &Server{
-		router:       r,
-		userHandler:  userH,
-		authHandler:  authH,
-		tokenHandler: tokenH,
-		log:          log,
+		router:         r,
+		userHandler:    userH,
+		authHandler:    authH,
+		tokenHandler:   tokenH,
+		loginRateLimit: loginRateLimit,
+		log:            log,
 	}
 
 	s.setupMiddleware()
@@ -70,7 +73,9 @@ func (s *Server) setupMiddleware() {
 func (s *Server) setupRoutes() {
 	s.router.Route("/api/v1/auth", func(r chi.Router) {
 		r.Post("/register", s.userHandler.Register)
-		r.Post("/login", s.authHandler.Login)
+
+		r.With(s.loginRateLimit).Post("/login", s.authHandler.Login)
+
 		r.Post("/token/refresh", s.tokenHandler.Refresh)
 		r.Post("/token/revoke", s.tokenHandler.Revoke)
 		r.Post("/email/verify", s.userHandler.VerifyEmail)
