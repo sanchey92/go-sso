@@ -12,6 +12,7 @@
   *.test
   *.out
   cover.out
+  /coverage/
 
   # Go workspace
   go.work

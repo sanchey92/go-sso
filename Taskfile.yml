@@ -31,6 +31,17 @@ tasks:
     cmds:
       - go test ./... -v -race -count=1
 
+  test:cover:
+    desc: run unit tests with coverage and open report in browser
+    vars:
+      COVER_DIR: '{{.ROOT_DIR}}/coverage'
+    cmds:
+      - mkdir -p {{.COVER_DIR}}
+      - go test ./... -race -count=1 -coverprofile={{.COVER_DIR}}/coverage.out -covermode=atomic
+      - go tool cover -func={{.COVER_DIR}}/coverage.out
+      - go tool cover -html={{.COVER_DIR}}/coverage.out -o {{.COVER_DIR}}/coverage.html
+      - open {{.COVER_DIR}}/coverage.html
+
   test:integration:
     desc: run integration tests
     cmds:

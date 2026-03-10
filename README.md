@@ -84,7 +84,7 @@ GET    /healthz                          200  Health check
 
 Полный auth flow: регистрация, email verification, логин, refresh token rotation с replay detection, password reset, rate limiting (Redis).
 
-20 из 22 задач выполнены. Остались: unit-тесты, интеграционные тесты.
+21 из 22 задач выполнены. Unit-тесты готовы (покрытие usecase/auth 100%, token 95.9%, user 92.5%). Осталось: интеграционные тесты (testcontainers).
 
 ## Phase 2: OAuth 2.0 + OIDC — Next
 
@@ -126,7 +126,9 @@ task build
 task run
 
 # Quality
-task test
+task test                  # unit tests
+task test:cover            # unit tests + coverage report in browser
+task test:integration      # integration tests (requires Docker)
 task lint
 
 # Migrations
