@@ -84,7 +84,7 @@ GET    /healthz                          200  Health check
 
 Полный auth flow: регистрация, email verification, логин, refresh token rotation с replay detection, password reset, rate limiting (Redis).
 
-19 из 22 задач выполнены. Остались: main.go + DI wiring, unit-тесты, интеграционные тесты.
+20 из 22 задач выполнены. Остались: unit-тесты, интеграционные тесты.
 
 ## Phase 2: OAuth 2.0 + OIDC — Next
 
@@ -166,6 +166,7 @@ task proto-gen
 │           └── email/        log sender (stub)
 ├── migrations/               SQL (goose)
 ├── pkg/
+│   ├── closer/               graceful shutdown (parallel close, panic recovery, signals)
 │   ├── crypto/               token generation, hashing
 │   └── logger/               zap wrapper
 ├── proto/                    Protobuf definitions (Phase 5)
