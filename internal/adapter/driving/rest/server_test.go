@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 )
 
 func noopMiddleware(next http.Handler) http.Handler { return next }
@@ -29,6 +30,14 @@ func blockingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+var testCORSConfig = middleware.CORSConfig{
+	AllowOrigins:  "*",
+	AllowMethods:  "GET, POST, PUT, DELETE, OPTIONS",
+	AllowHeaders:  "Content-Type, Authorization, X-Request-ID",
+	ExposeHeaders: "X-Request-ID",
+	MaxAge:        "86400",
+}
+
 func newTestServer() *Server {
 	return NewServer(
 		&Config{Host: "localhost", Port: 0},
@@ -36,6 +45,7 @@ func newTestServer() *Server {
 		&handler.AuthHandler{},
 		&handler.TokenHandler{},
 		noopMiddleware,
+		testCORSConfig,
 		zap.NewNop(),
 	)
 }
@@ -103,6 +113,7 @@ func TestLoginRateLimitApplied(t *testing.T) {
 		&handler.AuthHandler{},
 		&handler.TokenHandler{},
 		blockingMiddleware,
+		testCORSConfig,
 		zap.NewNop(),
 	)
 
@@ -124,6 +135,7 @@ func TestLoginRateLimitNotAffectOtherRoutes(t *testing.T) {
 		&handler.AuthHandler{},
 		&handler.TokenHandler{},
 		blockingMiddleware,
+		testCORSConfig,
 		zap.NewNop(),
 	)
 

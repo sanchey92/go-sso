@@ -12,7 +12,11 @@ import (
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
-const maxBodySize = 1 << 20
+var maxBodySize int64 = 1 << 20
+
+func SetMaxBodySize(size int64) {
+	maxBodySize = size
+}
 
 type ErrorResponse struct {
 	Error string `json:"error"`

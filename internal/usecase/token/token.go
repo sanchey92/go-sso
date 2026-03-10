@@ -12,8 +12,6 @@ import (
 	"github.com/sanchey92/sso/pkg/crypto"
 )
 
-const defaultAudience = "sso"
-
 type TokenGenerator interface {
 	GenerateToken(userID, audience string) (string, error)
 	GenerateRefreshToken() (raw, hash string, err error)
@@ -31,21 +29,23 @@ type Service struct {
 	refreshRepo RefreshTokenRepository
 	accessTTL   time.Duration
 	refreshTTL  time.Duration
+	audience    string
 	log         *zap.Logger
 }
 
-func New(tg TokenGenerator, rr RefreshTokenRepository, accessTTL, refreshTTL time.Duration, log *zap.Logger) *Service {
+func New(tg TokenGenerator, rr RefreshTokenRepository, accessTTL, refreshTTL time.Duration, audience string, log *zap.Logger) *Service {
 	return &Service{
 		tokenGen:    tg,
 		refreshRepo: rr,
 		accessTTL:   accessTTL,
 		refreshTTL:  refreshTTL,
+		audience:    audience,
 		log:         log,
 	}
 }
 
 func (s *Service) IssueTokenPair(ctx context.Context, userID, clientID string, scopes []string) (*model.TokenPair, error) {
-	accessToken, err := s.tokenGen.GenerateToken(userID, defaultAudience)
+	accessToken, err := s.tokenGen.GenerateToken(userID, s.audience)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}
@@ -93,7 +93,7 @@ func (s *Service) RefreshTokens(ctx context.Context, rawRefreshToken string) (*m
 		return nil, fmt.Errorf("revoke current token: %w", err)
 	}
 
-	newAccessToken, err := s.tokenGen.GenerateToken(stored.UserID, defaultAudience)
+	newAccessToken, err := s.tokenGen.GenerateToken(stored.UserID, s.audience)
 	if err != nil {
 		return nil, fmt.Errorf("generate access token: %w", err)
 	}

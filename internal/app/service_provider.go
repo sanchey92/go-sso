@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -22,8 +21,6 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/user"
 	"github.com/sanchey92/sso/pkg/logger"
 )
-
-const shutdownTimeout = 10 * time.Second
 
 type serviceProvider struct {
 	log        *zap.Logger
@@ -51,13 +48,15 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	}
 
 	h := hasher.New(hasher.DefaultConfig())
-	emailSender := email.NewLogSender(log, "http://localhost:8080")
+	emailSender := email.NewLogSender(log, cfg.Server.HTTP.BaseURL)
 
-	tokenService := token.New(jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, log)
-	userService := user.New(storage, h, cache, emailSender, storage, log)
+	handler.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
+
+	tokenService := token.New(jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, cfg.Auth.Audience, log)
+	userService := user.New(storage, h, cache, emailSender, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
 	authService := auth.New(storage, h, tokenService, log)
 
-	httpServer := initHTTPServer(&cfg.Server.HTTP, &cfg.Security, userService, authService, tokenService, cache, log)
+	httpServer := initHTTPServer(cfg, userService, authService, tokenService, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -118,8 +117,7 @@ func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 }
 
 func initHTTPServer(
-	cfg *config.HTTPServerConfig,
-	secCfg *config.SecurityConfig,
+	cfg *config.Config,
 	userSvc *user.Service,
 	authSvc *auth.Service,
 	tokenSvc *token.Service,
@@ -132,18 +130,26 @@ func initHTTPServer(
 
 	loginRateLimit := middleware.RateLimit(
 		cache,
-		secCfg.RateLimit.Login.MaxAttempts,
-		secCfg.RateLimit.Login.Window,
+		cfg.Security.RateLimit.Login.MaxAttempts,
+		cfg.Security.RateLimit.Login.Window,
 		func(r *http.Request) string {
 			return "rate:login:" + middleware.ExtractIP(r)
 		},
 		log,
 	)
 
+	corsCfg := middleware.CORSConfig{
+		AllowOrigins:  cfg.Security.CORS.AllowOrigins,
+		AllowMethods:  cfg.Security.CORS.AllowMethods,
+		AllowHeaders:  cfg.Security.CORS.AllowHeaders,
+		ExposeHeaders: cfg.Security.CORS.ExposeHeaders,
+		MaxAge:        cfg.Security.CORS.MaxAge,
+	}
+
 	return rest.NewServer(&rest.Config{
-		Host:         cfg.Host,
-		Port:         cfg.Port,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-	}, userHandler, authHandler, tokenHandler, loginRateLimit, log)
+		Host:         cfg.Server.HTTP.Host,
+		Port:         cfg.Server.HTTP.Port,
+		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
+		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
+	}, userHandler, authHandler, tokenHandler, loginRateLimit, corsCfg, log)
 }

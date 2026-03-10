@@ -112,7 +112,7 @@ func TestService_IssueTokenPair(t *testing.T) {
 			refreshRepo := mocks.NewRefreshTokenRepository(t)
 			tt.setupMock(tokenGen, refreshRepo)
 
-			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, zap.NewNop())
+			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, "sso", zap.NewNop())
 
 			pair, err := svc.IssueTokenPair(ctx, tt.userID, tt.clientID, tt.scopes)
 
@@ -287,7 +287,7 @@ func TestService_RefreshTokens(t *testing.T) {
 			refreshRepo := mocks.NewRefreshTokenRepository(t)
 			tt.setupMock(tokenGen, refreshRepo)
 
-			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, zap.NewNop())
+			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, "sso", zap.NewNop())
 
 			pair, err := svc.RefreshTokens(ctx, tt.refreshToken)
 
@@ -351,7 +351,7 @@ func TestService_RevokeToken(t *testing.T) {
 			refreshRepo := mocks.NewRefreshTokenRepository(t)
 			tt.setupMock(refreshRepo)
 
-			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, zap.NewNop())
+			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, "sso", zap.NewNop())
 
 			err := svc.RevokeToken(ctx, tt.rawToken)
 

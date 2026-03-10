@@ -158,7 +158,7 @@ func TestService_Register(t *testing.T) {
 			emailSender := mocks.NewEmailSender(t)
 			tt.setupMock(hasher, userRepo, cache, emailSender)
 
-			svc := New(userRepo, hasher, cache, emailSender, mocks.NewTokenRevoker(t), zap.NewNop())
+			svc := New(userRepo, hasher, cache, emailSender, mocks.NewTokenRevoker(t), 24*time.Hour, time.Hour, zap.NewNop())
 
 			user, err := svc.Register(ctx, tt.email, tt.password)
 
@@ -244,7 +244,7 @@ func TestService_VerifyEmail(t *testing.T) {
 			userRepo := mocks.NewUserRepository(t)
 			tt.setupMock(cache, userRepo)
 
-			svc := New(userRepo, mocks.NewPasswordHasher(t), cache, mocks.NewEmailSender(t), mocks.NewTokenRevoker(t), zap.NewNop())
+			svc := New(userRepo, mocks.NewPasswordHasher(t), cache, mocks.NewEmailSender(t), mocks.NewTokenRevoker(t), 24*time.Hour, time.Hour, zap.NewNop())
 
 			err := svc.VerifyEmail(ctx, tt.token)
 
@@ -305,7 +305,7 @@ func TestService_Register_VerificationEmailFlow(t *testing.T) {
 			emailSender := mocks.NewEmailSender(t)
 			tt.setupMock(hasher, userRepo, cache, emailSender)
 
-			svc := New(userRepo, hasher, cache, emailSender, mocks.NewTokenRevoker(t), zap.NewNop())
+			svc := New(userRepo, hasher, cache, emailSender, mocks.NewTokenRevoker(t), 24*time.Hour, time.Hour, zap.NewNop())
 
 			user, err := svc.Register(ctx, "test@example.com", "securepassword")
 
@@ -385,7 +385,7 @@ func TestService_RequestPasswordReset(t *testing.T) {
 			es := mocks.NewEmailSender(t)
 			tt.setupMock(ur, cs, es)
 
-			svc := New(ur, mocks.NewPasswordHasher(t), cs, es, mocks.NewTokenRevoker(t), zap.NewNop())
+			svc := New(ur, mocks.NewPasswordHasher(t), cs, es, mocks.NewTokenRevoker(t), 24*time.Hour, time.Hour, zap.NewNop())
 			err := svc.RequestPasswordReset(ctx, tt.email)
 
 			if tt.wantErr {
@@ -475,7 +475,7 @@ func TestService_ResetPassword(t *testing.T) {
 			cs := mocks.NewCacheStore(t)
 			tt.setupMock(h, ur, tr, cs)
 
-			svc := New(ur, h, cs, mocks.NewEmailSender(t), tr, zap.NewNop())
+			svc := New(ur, h, cs, mocks.NewEmailSender(t), tr, 24*time.Hour, time.Hour, zap.NewNop())
 			err := svc.ResetPassword(ctx, tt.token, tt.password)
 
 			if tt.wantErr != "" {

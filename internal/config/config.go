@@ -22,10 +22,13 @@ type ServerConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Host         string        `yaml:"host"          env:"SSO_SERVER_HTTP_HOST"          env-default:"0.0.0.0"`
-	Port         int           `yaml:"port"          env:"SSO_SERVER_HTTP_PORT"          env-default:"8080"`
-	ReadTimeout  time.Duration `yaml:"read_timeout"  env:"SSO_SERVER_HTTP_READ_TIMEOUT"  env-default:"10s"`
-	WriteTimeout time.Duration `yaml:"write_timeout" env:"SSO_SERVER_HTTP_WRITE_TIMEOUT" env-default:"30s"`
+	Host            string        `yaml:"host"             env:"SSO_SERVER_HTTP_HOST"             env-default:"0.0.0.0"`
+	Port            int           `yaml:"port"             env:"SSO_SERVER_HTTP_PORT"             env-default:"8080"`
+	ReadTimeout     time.Duration `yaml:"read_timeout"     env:"SSO_SERVER_HTTP_READ_TIMEOUT"     env-default:"10s"`
+	WriteTimeout    time.Duration `yaml:"write_timeout"    env:"SSO_SERVER_HTTP_WRITE_TIMEOUT"    env-default:"30s"`
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" env:"SSO_SERVER_HTTP_SHUTDOWN_TIMEOUT" env-default:"10s"`
+	BaseURL         string        `yaml:"base_url"         env:"SSO_SERVER_HTTP_BASE_URL"         env-default:"http://localhost:8080"`
+	MaxBodySize     int64         `yaml:"max_body_size"    env:"SSO_SERVER_HTTP_MAX_BODY_SIZE"    env-default:"1048576"`
 }
 
 type GRPCServerConfig struct {
@@ -62,7 +65,10 @@ type AuthConfig struct {
 	AccessTokenTTL      time.Duration `yaml:"access_token_ttl"      env:"SSO_AUTH_ACCESS_TOKEN_TTL"      env-default:"15m"`
 	RefreshTokenTTL     time.Duration `yaml:"refresh_token_ttl"     env:"SSO_AUTH_REFRESH_TOKEN_TTL"     env-default:"168h"`
 	Issuer              string        `yaml:"issuer"                env:"SSO_AUTH_ISSUER"                env-required:"true"`
+	Audience            string        `yaml:"audience"              env:"SSO_AUTH_AUDIENCE"              env-default:"sso"`
 	JWTSigningAlgorithm string        `yaml:"jwt_signing_algorithm" env:"SSO_AUTH_JWT_SIGNING_ALGORITHM" env-default:"EdDSA"`
+	VerificationTTL     time.Duration `yaml:"verification_ttl"      env:"SSO_AUTH_VERIFICATION_TTL"      env-default:"24h"`
+	ResetTTL            time.Duration `yaml:"reset_ttl"             env:"SSO_AUTH_RESET_TTL"             env-default:"1h"`
 }
 
 type OAuthProviderConfig struct {
@@ -90,9 +96,18 @@ type RateLimitEntry struct {
 	Window      time.Duration `yaml:"window"`
 }
 
+type CORSConfig struct {
+	AllowOrigins string `yaml:"allow_origins" env:"SSO_SECURITY_CORS_ALLOW_ORIGINS" env-default:"*"`
+	AllowMethods string `yaml:"allow_methods" env:"SSO_SECURITY_CORS_ALLOW_METHODS" env-default:"GET, POST, PUT, DELETE, OPTIONS"`
+	AllowHeaders string `yaml:"allow_headers" env:"SSO_SECURITY_CORS_ALLOW_HEADERS" env-default:"Content-Type, Authorization, X-Request-ID"`
+	ExposeHeaders string `yaml:"expose_headers" env:"SSO_SECURITY_CORS_EXPOSE_HEADERS" env-default:"X-Request-ID"`
+	MaxAge        string `yaml:"max_age"        env:"SSO_SECURITY_CORS_MAX_AGE"        env-default:"86400"`
+}
+
 type SecurityConfig struct {
 	EncryptionKey string          `yaml:"encryption_key" env:"SSO_SECURITY_ENCRYPTION_KEY" env-required:"true"`
 	RateLimit     RateLimitConfig `yaml:"rate_limit"`
+	CORS          CORSConfig      `yaml:"cors"`
 }
 
 type RateLimitConfig struct {

@@ -9,6 +9,9 @@ server:
     port: 8080 # override: SSO_SERVER_HTTP_PORT
     read_timeout: 15s # override: SSO_SERVER_HTTP_READ_TIMEOUT
     write_timeout: 30s # override: SSO_SERVER_HTTP_WRITE_TIMEOUT
+    shutdown_timeout: 15s # override: SSO_SERVER_HTTP_SHUTDOWN_TIMEOUT
+    base_url: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_SERVER_HTTP_BASE_URL
+    max_body_size: 1048576 # override: SSO_SERVER_HTTP_MAX_BODY_SIZE
   grpc:
     host: "0.0.0.0"
     port: 9090 # override: SSO_SERVER_GRPC_PORT
@@ -35,7 +38,10 @@ auth:
   access_token_ttl: 15m # override: SSO_AUTH_ACCESS_TOKEN_TTL
   refresh_token_ttl: 168h # override: SSO_AUTH_REFRESH_TOKEN_TTL
   issuer: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_AUTH_ISSUER
+  audience: "sso" # override: SSO_AUTH_AUDIENCE
   jwt_signing_algorithm: "EdDSA" # override: SSO_AUTH_JWT_SIGNING_ALGORITHM
+  verification_ttl: 24h # override: SSO_AUTH_VERIFICATION_TTL
+  reset_ttl: 1h # override: SSO_AUTH_RESET_TTL
 
 federation:
   google:
@@ -54,6 +60,12 @@ mfa:
 
 security:
   encryption_key: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_SECURITY_ENCRYPTION_KEY
+  cors:
+    allow_origins: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_SECURITY_CORS_ALLOW_ORIGINS
+    allow_methods: "GET, POST, OPTIONS" # override: SSO_SECURITY_CORS_ALLOW_METHODS
+    allow_headers: "Content-Type, Authorization, X-Request-ID" # override: SSO_SECURITY_CORS_ALLOW_HEADERS
+    expose_headers: "X-Request-ID" # override: SSO_SECURITY_CORS_EXPOSE_HEADERS
+    max_age: "86400" # override: SSO_SECURITY_CORS_MAX_AGE
   rate_limit:
     login:
       max_attempts: 10

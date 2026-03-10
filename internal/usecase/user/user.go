@@ -18,12 +18,9 @@ import (
 const (
 	minPasswordLen  = 8
 	verifyKeyPrefix = "verify:"
-	verificationTTL = 24 * time.Hour
 	verifyTokenLen  = 32
-
-	resetKeyPrefix = "reset:"
-	resetTTL       = 1 * time.Hour
-	resetTokenLen  = 32
+	resetKeyPrefix  = "reset:"
+	resetTokenLen   = 32
 )
 
 type UserRepository interface {
@@ -53,12 +50,14 @@ type EmailSender interface {
 }
 
 type Service struct {
-	userRepo     UserRepository
-	hasher       PasswordHasher
-	cache        CacheStore
-	email        EmailSender
-	tokenRevoker TokenRevoker
-	log          *zap.Logger
+	userRepo        UserRepository
+	hasher          PasswordHasher
+	cache           CacheStore
+	email           EmailSender
+	tokenRevoker    TokenRevoker
+	verificationTTL time.Duration
+	resetTTL        time.Duration
+	log             *zap.Logger
 }
 
 func New(
@@ -67,15 +66,18 @@ func New(
 	cs CacheStore,
 	es EmailSender,
 	tr TokenRevoker,
+	verificationTTL, resetTTL time.Duration,
 	log *zap.Logger,
 ) *Service {
 	return &Service{
-		userRepo:     ur,
-		hasher:       h,
-		cache:        cs,
-		email:        es,
-		tokenRevoker: tr,
-		log:          log,
+		userRepo:        ur,
+		hasher:          h,
+		cache:           cs,
+		email:           es,
+		tokenRevoker:    tr,
+		verificationTTL: verificationTTL,
+		resetTTL:        resetTTL,
+		log:             log,
 	}
 }
 
@@ -107,7 +109,7 @@ func (s *Service) Register(ctx context.Context, email, password string) (*model.
 	}
 
 	key := verifyKeyPrefix + token
-	if err := s.cache.Set(ctx, key, user.ID, verificationTTL); err != nil {
+	if err := s.cache.Set(ctx, key, user.ID, s.verificationTTL); err != nil {
 		s.log.Error("failed to save verification token", zap.Error(err))
 		return user, nil
 	}
@@ -169,7 +171,7 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 	}
 
 	key := resetKeyPrefix + token
-	if err = s.cache.Set(ctx, key, user.ID, resetTTL); err != nil {
+	if err = s.cache.Set(ctx, key, user.ID, s.resetTTL); err != nil {
 		return fmt.Errorf("save reset token: %w", err)
 	}
 

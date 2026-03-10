@@ -24,7 +24,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	c := closer.New(sp.log, shutdownTimeout, syscall.SIGINT, syscall.SIGTERM)
+	c := closer.New(sp.log, cfg.Server.HTTP.ShutdownTimeout, syscall.SIGINT, syscall.SIGTERM)
 
 	c.AddFunc(sp.httpServer.Stop)
 	c.AddFunc(func(_ context.Context) error { return sp.cache.Close() })

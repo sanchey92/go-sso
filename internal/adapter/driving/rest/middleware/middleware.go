@@ -74,19 +74,29 @@ func Recovery(log *zap.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func CORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-ID")
-		w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
-		w.Header().Set("Access-Control-Max-Age", "86400")
+type CORSConfig struct {
+	AllowOrigins  string
+	AllowMethods  string
+	AllowHeaders  string
+	ExposeHeaders string
+	MaxAge        string
+}
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+func CORS(cfg CORSConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", cfg.AllowOrigins)
+			w.Header().Set("Access-Control-Allow-Methods", cfg.AllowMethods)
+			w.Header().Set("Access-Control-Allow-Headers", cfg.AllowHeaders)
+			w.Header().Set("Access-Control-Expose-Headers", cfg.ExposeHeaders)
+			w.Header().Set("Access-Control-Max-Age", cfg.MaxAge)
 
-		next.ServeHTTP(w, r)
-	})
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

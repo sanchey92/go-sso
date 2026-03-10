@@ -28,6 +28,7 @@ type Server struct {
 	authHandler    *handler.AuthHandler
 	tokenHandler   *handler.TokenHandler
 	loginRateLimit func(http.Handler) http.Handler
+	corsConfig     middleware.CORSConfig
 	log            *zap.Logger
 }
 
@@ -37,6 +38,7 @@ func NewServer(
 	authH *handler.AuthHandler,
 	tokenH *handler.TokenHandler,
 	loginRateLimit func(http.Handler) http.Handler,
+	corsCfg middleware.CORSConfig,
 	log *zap.Logger,
 ) *Server {
 	r := chi.NewRouter()
@@ -47,6 +49,7 @@ func NewServer(
 		authHandler:    authH,
 		tokenHandler:   tokenH,
 		loginRateLimit: loginRateLimit,
+		corsConfig:     corsCfg,
 		log:            log,
 	}
 
@@ -67,7 +70,7 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Recovery(s.log))
 	s.router.Use(middleware.Logging(s.log))
-	s.router.Use(middleware.CORS)
+	s.router.Use(middleware.CORS(s.corsConfig))
 }
 
 func (s *Server) setupRoutes() {

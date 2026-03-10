@@ -4,6 +4,9 @@ server:
     port: 8080
     read_timeout: 10s
     write_timeout: 30s
+    shutdown_timeout: 10s
+    base_url: "http://localhost:8080"
+    max_body_size: 1048576
   grpc:
     host: "0.0.0.0"
     port: 9090
@@ -30,7 +33,10 @@ auth:
   access_token_ttl: 15m
   refresh_token_ttl: 168h
   issuer: "http://localhost:8080" # override via .env SSO_AUTH_ISSUER
+  audience: "sso"
   jwt_signing_algorithm: "EdDSA"
+  verification_ttl: 24h
+  reset_ttl: 1h
 
 federation:
   google:
@@ -49,6 +55,12 @@ mfa:
 
 security:
   encryption_key: "stub-encryption-key-change-me-32b" # override via .env SSO_SECURITY_ENCRYPTION_KEY
+  cors:
+    allow_origins: "*"
+    allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
+    allow_headers: "Content-Type, Authorization, X-Request-ID"
+    expose_headers: "X-Request-ID"
+    max_age: "86400"
   rate_limit:
     login:
       max_attempts: 10
