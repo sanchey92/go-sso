@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
+
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 	"github.com/sanchey92/sso/pkg/crypto"
-	"go.uber.org/zap"
-	"golang.org/x/crypto/bcrypt"
 )
 
 const (

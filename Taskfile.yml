@@ -7,11 +7,15 @@ vars:
   GOLANGCI_LINT_VERSION: 'v2.10.1'
   GOOSE_VERSION: 'v3.24.1'
   MOCKERY_VERSION: 'v2.53.3'
+  GCI_VERSION: 'v0.13.6'
+  GOFUMPT_VERSION: 'v0.8.0'
 
   BIN_DIR: '{{.ROOT_DIR}}/bin'
   GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
   GOOSE: '{{.BIN_DIR}}/goose'
   MOCKERY: '{{.BIN_DIR}}/mockery'
+  GCI: '{{.BIN_DIR}}/gci'
+  GOFUMPT: '{{.BIN_DIR}}/gofumpt'
 
 tasks:
   build:
@@ -47,12 +51,31 @@ tasks:
     cmds:
       - go test ./... -v -race -count=1 -tags=integration
 
+  format:
+    desc: "format gofumpt + gci"
+    silent: true
+    deps: [ install-formatters ]
+    cmds:
+      - find . -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GOFUMPT}} -extra -w {} +
+      - find . -type f -name '*.go' ! -path '*/mocks/*' -exec {{.GCI}} write -s standard -s default -s "prefix(github.com/sanchey92/sso/)" {} +
+
   install:tools:
     desc: install all tools
     cmds:
       - task: install:golangci-lint
       - task: install:goose
       - task: install:mockery
+      - task: install-formatters
+
+  install-formatters:
+    desc: "install formatters"
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOBIN={{.BIN_DIR}} go install mvdan.cc/gofumpt@{{.GOFUMPT_VERSION}}
+      - GOBIN={{.BIN_DIR}} go install github.com/daixiang0/gci@{{.GCI_VERSION}}
+    status:
+      - test -x {{.GOFUMPT}}
+      - test -x {{.GCI}}
 
   install:golangci-lint:
     desc: install golangci-lint
