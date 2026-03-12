@@ -23,6 +23,9 @@ packages:
     interfaces:
       TokenGenerator:
       RefreshTokenRepository:
+  github.com/sanchey92/sso/internal/usecase/client:
+    interfaces:
+      OAuthRepository:
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler:
     interfaces:
       UserService:

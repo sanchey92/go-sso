@@ -13,4 +13,5 @@ var (
 	ErrInvalidVerificationToken = errors.New("invalid or expired token")
 	ErrKeyNotFound              = errors.New("key not found")
 	ErrInvalidResetToken        = errors.New("invalid or expired reset token")
+	ErrOAuthClientNotFound      = errors.New("OAuth client not found")
 )

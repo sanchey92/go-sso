@@ -97,9 +97,9 @@ type RateLimitEntry struct {
 }
 
 type CORSConfig struct {
-	AllowOrigins string `yaml:"allow_origins" env:"SSO_SECURITY_CORS_ALLOW_ORIGINS" env-default:"*"`
-	AllowMethods string `yaml:"allow_methods" env:"SSO_SECURITY_CORS_ALLOW_METHODS" env-default:"GET, POST, PUT, DELETE, OPTIONS"`
-	AllowHeaders string `yaml:"allow_headers" env:"SSO_SECURITY_CORS_ALLOW_HEADERS" env-default:"Content-Type, Authorization, X-Request-ID"`
+	AllowOrigins  string `yaml:"allow_origins" env:"SSO_SECURITY_CORS_ALLOW_ORIGINS" env-default:"*"`
+	AllowMethods  string `yaml:"allow_methods" env:"SSO_SECURITY_CORS_ALLOW_METHODS" env-default:"GET, POST, PUT, DELETE, OPTIONS"`
+	AllowHeaders  string `yaml:"allow_headers" env:"SSO_SECURITY_CORS_ALLOW_HEADERS" env-default:"Content-Type, Authorization, X-Request-ID"`
 	ExposeHeaders string `yaml:"expose_headers" env:"SSO_SECURITY_CORS_EXPOSE_HEADERS" env-default:"X-Request-ID"`
 	MaxAge        string `yaml:"max_age"        env:"SSO_SECURITY_CORS_MAX_AGE"        env-default:"86400"`
 }

@@ -33,6 +33,7 @@ tasks:
   test:
     desc: run unit tests
     cmds:
+      - go clean -testcache
       - go test ./... -v -race -count=1
 
   test:cover:
@@ -40,6 +41,7 @@ tasks:
     vars:
       COVER_DIR: '{{.ROOT_DIR}}/coverage'
     cmds:
+      - go clean -testcache
       - mkdir -p {{.COVER_DIR}}
       - go test ./... -race -count=1 -coverprofile={{.COVER_DIR}}/coverage.out -covermode=atomic
       - go tool cover -func={{.COVER_DIR}}/coverage.out
@@ -49,6 +51,7 @@ tasks:
   test:integration:
     desc: run integration tests
     cmds:
+      - go clean -testcache
       - go test ./... -v -race -count=1 -tags=integration
 
   format:

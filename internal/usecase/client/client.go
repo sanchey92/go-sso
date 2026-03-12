@@ -18,8 +18,8 @@ const (
 )
 
 type OAuthRepository interface {
-	Create(ctx context.Context, client *model.OAuthClient) error
-	GetByID(ctx context.Context, id string) (*model.OAuthClient, error)
+	CreateClient(ctx context.Context, client *model.OAuthClient) error
+	GetClientByID(ctx context.Context, id string) (*model.OAuthClient, error)
 }
 
 type Service struct {
@@ -58,7 +58,7 @@ func (s *Service) Create(
 		IsConfidential: isConfidential,
 	}
 
-	if err := s.repo.Create(ctx, client); err != nil {
+	if err := s.repo.CreateClient(ctx, client); err != nil {
 		return nil, "", fmt.Errorf("create oauth client: %w", err)
 	}
 
@@ -71,15 +71,15 @@ func (s *Service) Create(
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*model.OAuthClient, error) {
-	client, err := s.repo.GetByID(ctx, id)
+	client, err := s.repo.GetClientByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get oauth client")
+		return nil, fmt.Errorf("get oauth client: %w", err)
 	}
 	return client, nil
 }
 
 func (s *Service) VerifySecret(ctx context.Context, clientID, rawSecret string) (*model.OAuthClient, error) {
-	client, err := s.repo.GetByID(ctx, clientID)
+	client, err := s.repo.GetClientByID(ctx, clientID)
 	if err != nil {
 		return nil, fmt.Errorf("get oauth client: %w", err)
 	}

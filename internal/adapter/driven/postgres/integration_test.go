@@ -1,5 +1,3 @@
-//go:build integration
-
 package postgres
 
 import (
@@ -52,7 +50,6 @@ func TestMain(m *testing.M) {
 				WithStartupTimeout(30*time.Second),
 		),
 	)
-
 	if err != nil {
 		panic("failed to start postgres container: " + err.Error())
 	}
@@ -468,4 +465,75 @@ func TestStorage_RevokeByUserID(t *testing.T) {
 	gotU2, err := testStorage.GetByHash(ctx, crypto.HashToken("user2-token"))
 	require.NoError(t, err)
 	assert.False(t, gotU2.Revoked)
+}
+
+func createTestOAuthClient(t *testing.T, ctx context.Context, name string) *model.OAuthClient {
+	t.Helper()
+	client := &model.OAuthClient{
+		SecretHash:     "$2a$10$testbcrypthash",
+		Name:           name,
+		RedirectURIs:   []string{"https://example.com/callback"},
+		AllowedScopes:  []string{"openid", "profile"},
+		IsConfidential: true,
+	}
+	err := testStorage.CreateClient(ctx, client)
+	require.NoError(t, err)
+	return client
+}
+
+func TestStorage_CreateClient(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		restoreDB(t)
+
+		client := &model.OAuthClient{
+			SecretHash:     "$2a$10$somebcrypthash",
+			Name:           "Test App",
+			RedirectURIs:   []string{"https://app.example.com/callback"},
+			AllowedScopes:  []string{"openid", "profile", "email"},
+			IsConfidential: true,
+		}
+		err := testStorage.CreateClient(t.Context(), client)
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, client.ID, "ID should be set by DB")
+		assert.False(t, client.CreatedAt.IsZero(), "CreatedAt should be set")
+	})
+
+	t.Run("success with nil arrays", func(t *testing.T) {
+		restoreDB(t)
+
+		client := &model.OAuthClient{
+			SecretHash: "$2a$10$somebcrypthash",
+			Name:       "Minimal App",
+		}
+		err := testStorage.CreateClient(t.Context(), client)
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, client.ID)
+	})
+}
+
+func TestStorage_GetClientByID(t *testing.T) {
+	restoreDB(t)
+	ctx := t.Context()
+
+	created := createTestOAuthClient(t, ctx, "Lookup App")
+
+	t.Run("found", func(t *testing.T) {
+		got, err := testStorage.GetClientByID(ctx, created.ID)
+		require.NoError(t, err)
+
+		assert.Equal(t, created.ID, got.ID)
+		assert.Equal(t, "$2a$10$testbcrypthash", got.SecretHash)
+		assert.Equal(t, "Lookup App", got.Name)
+		assert.Equal(t, []string{"https://example.com/callback"}, got.RedirectURIs)
+		assert.Equal(t, []string{"openid", "profile"}, got.AllowedScopes)
+		assert.True(t, got.IsConfidential)
+		assert.False(t, got.CreatedAt.IsZero())
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		_, err := testStorage.GetClientByID(ctx, "00000000-0000-0000-0000-000000000000")
+		require.ErrorIs(t, err, domainerrors.ErrOAuthClientNotFound)
+	})
 }
