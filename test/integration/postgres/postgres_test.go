@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 		panic("failed to open sql connection: " + err.Error())
 	}
 
-	if err := goose.Up(db, "../../../../migrations"); err != nil {
+	if err := goose.Up(db, "../../../migrations"); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
 	db.Close()
