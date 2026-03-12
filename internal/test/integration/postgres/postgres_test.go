@@ -1,3 +1,5 @@
+//go:build integration
+
 package postgres
 
 import (
@@ -16,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/zap"
 
+	pgadapter "github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 	"github.com/sanchey92/sso/pkg/crypto"
@@ -32,7 +35,7 @@ func init() {
 }
 
 var (
-	testStorage *Storage
+	testStorage *pgadapter.Storage
 	testCtr     *tcpostgres.PostgresContainer
 	testConnStr string
 )
@@ -64,8 +67,7 @@ func TestMain(m *testing.M) {
 		panic("failed to open sql connection: " + err.Error())
 	}
 
-	migrationDir := "../../../../migrations"
-	if err := goose.Up(db, migrationDir); err != nil {
+	if err := goose.Up(db, "../../../../migrations"); err != nil {
 		panic("failed to run migrations: " + err.Error())
 	}
 	db.Close()
@@ -74,7 +76,7 @@ func TestMain(m *testing.M) {
 		panic("failed to create snapshot: " + err.Error())
 	}
 
-	storage, err := New(ctx, &Config{
+	storage, err := pgadapter.New(ctx, &pgadapter.Config{
 		DSN:             connStr,
 		MaxConns:        5,
 		MinConns:        1,
@@ -106,7 +108,7 @@ func restoreDB(t *testing.T) {
 	err := testCtr.Restore(ctx, tcpostgres.WithSnapshotName("clean"))
 	require.NoError(t, err, "failed to restore database snapshot")
 
-	storage, err := New(ctx, &Config{
+	storage, err := pgadapter.New(ctx, &pgadapter.Config{
 		DSN:             testConnStr,
 		MaxConns:        5,
 		MinConns:        1,
@@ -118,7 +120,6 @@ func restoreDB(t *testing.T) {
 	testStorage = storage
 }
 
-// createTestUser is a helper that creates a user and returns it.
 func createTestUser(t *testing.T, ctx context.Context, email string) *model.User {
 	t.Helper()
 	user := model.NewUser(email, "$argon2id$hash")
@@ -466,6 +467,8 @@ func TestStorage_RevokeByUserID(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, gotU2.Revoked)
 }
+
+// --- OAuthClient Repository ---
 
 func createTestOAuthClient(t *testing.T, ctx context.Context, name string) *model.OAuthClient {
 	t.Helper()

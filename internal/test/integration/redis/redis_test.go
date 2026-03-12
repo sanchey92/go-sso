@@ -14,10 +14,11 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"go.uber.org/zap"
 
+	redisadapter "github.com/sanchey92/sso/internal/adapter/driven/redis"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
-var testCache *Cache
+var testCache *redisadapter.Cache
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -36,7 +37,7 @@ func TestMain(m *testing.M) {
 		panic("failed to get redis port: " + err.Error())
 	}
 
-	cache, err := NewCache(&Config{
+	cache, err := redisadapter.NewCache(&redisadapter.Config{
 		Address:         fmt.Sprintf("%s:%s", host, port.Port()),
 		DB:              0,
 		DialTimeout:     5 * time.Second,
