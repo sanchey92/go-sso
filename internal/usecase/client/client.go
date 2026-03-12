@@ -39,15 +39,15 @@ func (s *Service) Create(
 	name string, redirectURIs,
 	allowedScopes []string,
 	isConfidential bool,
-) (*model.OAuthClient, string, error) {
+) (string, string, error) {
 	rawSecret, err := crypto.GenerateRandomToken(secretLength)
 	if err != nil {
-		return nil, "", fmt.Errorf("generate client secret: %w", err)
+		return "", "", fmt.Errorf("generate client secret: %w", err)
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(rawSecret), bcryptCost)
 	if err != nil {
-		return nil, "", fmt.Errorf("hash client secret: %w", err)
+		return "", "", fmt.Errorf("hash client secret: %w", err)
 	}
 
 	client := &model.OAuthClient{
@@ -59,7 +59,7 @@ func (s *Service) Create(
 	}
 
 	if err := s.repo.CreateClient(ctx, client); err != nil {
-		return nil, "", fmt.Errorf("create oauth client: %w", err)
+		return "", "", fmt.Errorf("create oauth client: %w", err)
 	}
 
 	s.log.Info("oauth client created",
@@ -67,7 +67,7 @@ func (s *Service) Create(
 		zap.String("name", name),
 	)
 
-	return client, rawSecret, nil
+	return client.ID, rawSecret, nil
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*model.OAuthClient, error) {

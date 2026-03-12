@@ -28,7 +28,7 @@ func TestService_Create(t *testing.T) {
 		isConfidential bool
 		setupMock      func(repo *mocks.OAuthRepository)
 		wantErr        string
-		check          func(t *testing.T, client *model.OAuthClient, rawSecret string)
+		check          func(t *testing.T, clientID string, rawSecret string)
 	}{
 		{
 			name:           "successful creation",
@@ -40,24 +40,14 @@ func TestService_Create(t *testing.T) {
 				repo.EXPECT().
 					CreateClient(mock.Anything, mock.AnythingOfType("*model.OAuthClient")).
 					Run(func(_ context.Context, c *model.OAuthClient) {
-						// Simulate DB filling ID and CreatedAt
 						c.ID = "generated-uuid"
 						c.CreatedAt = time.Now()
 					}).
 					Return(nil)
 			},
-			check: func(t *testing.T, client *model.OAuthClient, rawSecret string) {
-				assert.Equal(t, "generated-uuid", client.ID)
-				assert.Equal(t, "My App", client.Name)
-				assert.Equal(t, []string{"https://app.example.com/callback"}, client.RedirectURIs)
-				assert.Equal(t, []string{"openid", "profile", "email"}, client.AllowedScopes)
-				assert.True(t, client.IsConfidential)
-				assert.NotEmpty(t, client.SecretHash)
+			check: func(t *testing.T, clientID string, rawSecret string) {
+				assert.Equal(t, "generated-uuid", clientID)
 				assert.NotEmpty(t, rawSecret)
-
-				// Verify bcrypt: rawSecret должен верифицироваться против hash
-				err := bcrypt.CompareHashAndPassword([]byte(client.SecretHash), []byte(rawSecret))
-				assert.NoError(t, err, "bcrypt verification should succeed")
 			},
 		},
 		{
@@ -82,21 +72,21 @@ func TestService_Create(t *testing.T) {
 
 			svc := New(repo, zap.NewNop())
 
-			client, rawSecret, err := svc.Create(ctx, tt.clientName, tt.redirectURIs, tt.allowedScopes, tt.isConfidential)
+			clientID, rawSecret, err := svc.Create(ctx, tt.clientName, tt.redirectURIs, tt.allowedScopes, tt.isConfidential)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
-				assert.Nil(t, client)
+				assert.Empty(t, clientID)
 				assert.Empty(t, rawSecret)
 				return
 			}
 
 			require.NoError(t, err)
-			require.NotNil(t, client)
+			assert.NotEmpty(t, clientID)
 
 			if tt.check != nil {
-				tt.check(t, client, rawSecret)
+				tt.check(t, clientID, rawSecret)
 			}
 		})
 	}

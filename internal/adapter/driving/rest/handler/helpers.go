@@ -71,6 +71,8 @@ func handleServiceError(w http.ResponseWriter, r *http.Request, err error, log *
 		respondError(w, http.StatusUnauthorized, "token expired", "TOKEN_EXPIRED")
 	case errors.Is(err, domainerrors.ErrTokenRevoked):
 		respondError(w, http.StatusUnauthorized, "token revoked", "TOKEN_REVOKED")
+	case errors.Is(err, domainerrors.ErrOAuthClientNotFound):
+		respondError(w, http.StatusNotFound, "client not found", "CLIENT_NOT_FOUND")
 	default:
 		if errors.Unwrap(err) == nil {
 			respondError(w, http.StatusBadRequest, err.Error(), "VALIDATION_ERROR")

@@ -22,6 +22,7 @@ internal/
     auth/             Login
     user/             Register, VerifyEmail, ResetPassword
     token/            IssueTokenPair, RefreshTokens, RevokeToken
+    client/           Create, GetByID, VerifySecret (OAuth clients)
   adapter/
     driving/          входящие: REST (chi), gRPC
     driven/           исходящие: PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, Email
@@ -70,14 +71,16 @@ pkg/
 ## API Endpoints
 
 ```
-POST   /api/v1/auth/register             201  Регистрация
-POST   /api/v1/auth/login                200  Login → access + refresh tokens
-POST   /api/v1/auth/token/refresh        200  Ротация refresh token
-POST   /api/v1/auth/token/revoke         204  Отзыв refresh token
-POST   /api/v1/auth/email/verify         200  Верификация email
+POST   /api/v1/auth/register              201  Регистрация
+POST   /api/v1/auth/login                 200  Login → access + refresh tokens
+POST   /api/v1/auth/token/refresh         200  Ротация refresh token
+POST   /api/v1/auth/token/revoke          204  Отзыв refresh token
+POST   /api/v1/auth/email/verify          200  Верификация email
 POST   /api/v1/auth/password/reset-request 200 Запрос сброса пароля
-POST   /api/v1/auth/password/reset       200  Сброс пароля по токену
-GET    /healthz                          200  Health check
+POST   /api/v1/auth/password/reset        200  Сброс пароля по токену
+POST   /api/v1/auth/oauth/clients/        201  Регистрация OAuth-клиента → client_id + client_secret
+GET    /api/v1/auth/oauth/clients/{id}    200  Получение OAuth-клиента (без secret)
+GET    /healthz                           200  Health check
 ```
 
 ## Phase 1: Foundation — Done
@@ -92,7 +95,7 @@ GET    /healthz                          200  Health check
 
 | Task | Description | Status |
 |------|------------|--------|
-| TASK-023 | Регистрация OAuth-клиентов (client_id/secret, bcrypt) | planned |
+| TASK-023 | Регистрация OAuth-клиентов (client_id/secret, bcrypt) | done |
 | TASK-024 | Authorization Code + PKCE (`/oauth/authorize`) | planned |
 | TASK-025 | Token endpoint (code exchange, PKCE verify, refresh grant) | planned |
 | TASK-026 | Token revocation (RFC 7009) + OIDC Discovery (`/.well-known/openid-configuration`) | planned |
@@ -152,20 +155,25 @@ task proto-gen
 │   ├── config/               cleanenv config structs
 │   ├── domain/
 │   │   ├── model/            User, RefreshToken, OAuthClient, TokenPair
-│   │   └── errors/           sentinel errors (9 types)
+│   │   └── errors/           sentinel errors (11 types)
 │   ├── usecase/
 │   │   ├── auth/             Login + interfaces
 │   │   ├── user/             Register, VerifyEmail, ResetPassword + interfaces
-│   │   └── token/            IssueTokenPair, RefreshTokens, RevokeToken + interfaces
+│   │   ├── token/            IssueTokenPair, RefreshTokens, RevokeToken + interfaces
+│   │   └── client/           Create, GetByID, VerifySecret (OAuth clients) + interfaces
 │   └── adapter/
 │       ├── driving/
 │       │   └── rest/         HTTP server (chi), handlers, middleware
 │       └── driven/
-│           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo
+│           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo, OAuthClientRepo
 │           ├── redis/        cache (Set/Get/Delete)
 │           ├── jwt/          EdDSA token generator
 │           ├── hasher/       Argon2id
 │           └── email/        log sender (stub)
+├── test/
+│   └── integration/          integration tests (testcontainers, //go:build integration)
+│       ├── postgres/          UserRepo, RefreshTokenRepo, OAuthClientRepo
+│       └── redis/             CacheStore (Set/Get/Delete/TTL)
 ├── migrations/               SQL (goose)
 ├── pkg/
 │   ├── closer/               graceful shutdown (parallel close, panic recovery, signals)
