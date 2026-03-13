@@ -18,6 +18,7 @@ import (
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/internal/usecase/client"
+	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
 	"github.com/sanchey92/sso/pkg/logger"
@@ -57,8 +58,9 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	userService := user.New(storage, h, cache, emailSender, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
 	authService := auth.New(storage, h, tokenService, log)
 	clientService := client.New(storage, log)
+	oauthService := oauth.New(storage, cache, cfg.OAuth.AuthCodeTTL, log)
 
-	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, cache, log)
+	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -124,13 +126,15 @@ func initHTTPServer(
 	authSvc *auth.Service,
 	tokenSvc *token.Service,
 	clientSvc *client.Service,
+	oauthSvc *oauth.Service,
 	cache *redis.Cache,
 	log *zap.Logger,
 ) *rest.Server {
 	userHandler := handler.NewUserHandler(userSvc, log)
 	authHandler := handler.NewAuthHandler(authSvc, log)
 	tokenHandler := handler.NewTokenHandler(tokenSvc, log)
-	oauthHandler := handler.NewOAuthClientHandler(clientSvc, log)
+	clientHandler := handler.NewOAuthClientHandler(clientSvc, log)
+	oauthHandler := handler.NewOAuthHandler(oauthSvc, log)
 
 	loginRateLimit := middleware.RateLimit(
 		cache,
@@ -155,5 +159,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, userHandler, authHandler, tokenHandler, oauthHandler, loginRateLimit, corsCfg, log)
+	}, userHandler, authHandler, tokenHandler, clientHandler, oauthHandler, loginRateLimit, corsCfg, log)
 }

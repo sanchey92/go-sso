@@ -28,6 +28,7 @@ type Server struct {
 	authHandler    *handler.AuthHandler
 	tokenHandler   *handler.TokenHandler
 	clientHandler  *handler.OAuthClientHandler
+	oauthHandler   *handler.OAuthHandler
 	loginRateLimit func(http.Handler) http.Handler
 	corsConfig     middleware.CORSConfig
 	log            *zap.Logger
@@ -39,6 +40,7 @@ func NewServer(
 	authH *handler.AuthHandler,
 	tokenH *handler.TokenHandler,
 	clientH *handler.OAuthClientHandler,
+	oauthH *handler.OAuthHandler,
 	loginRateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
 	log *zap.Logger,
@@ -51,6 +53,7 @@ func NewServer(
 		authHandler:    authH,
 		tokenHandler:   tokenH,
 		clientHandler:  clientH,
+		oauthHandler:   oauthH,
 		loginRateLimit: loginRateLimit,
 		corsConfig:     corsCfg,
 		log:            log,
@@ -87,9 +90,12 @@ func (s *Server) setupRoutes() {
 		r.Post("/email/verify", s.userHandler.VerifyEmail)
 		r.Post("/password/reset-request", s.userHandler.RequestPasswordReset)
 		r.Post("/password/reset", s.userHandler.ResetPassword)
+	})
 
-		r.Post("/oauth/clients/", s.clientHandler.Create)
-		r.Get("/oauth/clients/{id}", s.clientHandler.GetByID)
+	s.router.Route("/api/v1/oauth", func(r chi.Router) {
+		r.Get("/authorize", s.oauthHandler.Authorize)
+		r.Get("/clients/{id}", s.clientHandler.GetByID)
+		r.Post("/clients/", s.clientHandler.Create)
 	})
 
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -19,6 +19,10 @@ packages:
       UserGetter:
       PasswordVerifier:
       TokenIssuer:
+  github.com/sanchey92/sso/internal/usecase/oauth:
+    interfaces:
+      ClientGetter:
+      AuthCodeStore:
   github.com/sanchey92/sso/internal/usecase/token:
     interfaces:
       TokenGenerator:
@@ -32,3 +36,4 @@ packages:
       AuthService:
       TokenService:
       OAuthService:
+      OAuthAuthorizeService:
