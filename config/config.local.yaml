@@ -38,6 +38,9 @@ auth:
   verification_ttl: 24h
   reset_ttl: 1h
 
+oauth:
+  auth_code_ttl: 60s
+
 federation:
   google:
     client_id: "google-client-id-stub" # override via .env SSO_FEDERATION_GOOGLE_CLIENT_ID

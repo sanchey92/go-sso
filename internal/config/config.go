@@ -10,6 +10,7 @@ type Config struct {
 	Server        ServerConfig        `yaml:"server"`
 	Database      DatabaseConfig      `yaml:"database"`
 	Auth          AuthConfig          `yaml:"auth"`
+	OAuth         OAuthConfig         `yaml:"oauth"`
 	Federation    FederationConfig    `yaml:"federation"`
 	MFA           MFAConfig           `yaml:"mfa"`
 	Security      SecurityConfig      `yaml:"security"`
@@ -69,6 +70,10 @@ type AuthConfig struct {
 	JWTSigningAlgorithm string        `yaml:"jwt_signing_algorithm" env:"SSO_AUTH_JWT_SIGNING_ALGORITHM" env-default:"EdDSA"`
 	VerificationTTL     time.Duration `yaml:"verification_ttl"      env:"SSO_AUTH_VERIFICATION_TTL"      env-default:"24h"`
 	ResetTTL            time.Duration `yaml:"reset_ttl"             env:"SSO_AUTH_RESET_TTL"             env-default:"1h"`
+}
+
+type OAuthConfig struct {
+	AuthCodeTTL time.Duration `yaml:"auth_code_ttl" env:"SSO_OAUTH_AUTH_CODE_TTL" env-default:"60s"`
 }
 
 type OAuthProviderConfig struct {
