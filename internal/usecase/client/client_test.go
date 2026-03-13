@@ -28,7 +28,7 @@ func TestService_Create(t *testing.T) {
 		isConfidential bool
 		setupMock      func(repo *mocks.OAuthRepository)
 		wantErr        string
-		check          func(t *testing.T, clientID string, rawSecret string)
+		check          func(t *testing.T, clientID, rawSecret string)
 	}{
 		{
 			name:           "successful creation",
@@ -45,7 +45,7 @@ func TestService_Create(t *testing.T) {
 					}).
 					Return(nil)
 			},
-			check: func(t *testing.T, clientID string, rawSecret string) {
+			check: func(t *testing.T, clientID, rawSecret string) {
 				assert.Equal(t, "generated-uuid", clientID)
 				assert.NotEmpty(t, rawSecret)
 			},

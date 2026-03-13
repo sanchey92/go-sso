@@ -150,7 +150,6 @@ func redirectWithError(w http.ResponseWriter, r *http.Request,
 	}
 	u.RawQuery = q.Encode()
 	http.Redirect(w, r, u.String(), http.StatusFound)
-
 }
 
 func buildRedirectURL(redirectURI, code, state string) string {
