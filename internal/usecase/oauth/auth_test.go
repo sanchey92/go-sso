@@ -111,7 +111,6 @@ func TestService_Authorize(t *testing.T) {
 				mocks.NewClientAuthenticator(t),
 				codeStore,
 				mocks.NewTokenIssuer(t),
-				mocks.NewTokenRefresher(t),
 				testAuthCodeTTL,
 				zap.NewNop(),
 			)

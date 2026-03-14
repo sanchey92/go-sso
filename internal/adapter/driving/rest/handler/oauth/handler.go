@@ -8,18 +8,30 @@ import (
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-type OAuthAuthorizeService interface {
+type OAuthorizer interface {
 	Authorize(ctx context.Context, params *model.AuthorizationCode) (code string, err error)
 }
 
-type Handler struct {
-	svc OAuthAuthorizeService
-	log *zap.Logger
+type Exchanger interface {
+	ExchangeCode(ctx context.Context, req *model.CodeExchangeRequest) (*model.TokenPair, error)
 }
 
-func NewHandler(svc OAuthAuthorizeService, log *zap.Logger) *Handler {
+type Refresher interface {
+	RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error)
+}
+
+type Handler struct {
+	oauth     OAuthorizer
+	exchanger Exchanger
+	refresher Refresher
+	log       *zap.Logger
+}
+
+func NewHandler(oauth OAuthorizer, ex Exchanger, ref Refresher, log *zap.Logger) *Handler {
 	return &Handler{
-		svc: svc,
-		log: log,
+		oauth:     oauth,
+		exchanger: ex,
+		refresher: ref,
+		log:       log,
 	}
 }

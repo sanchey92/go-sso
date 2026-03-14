@@ -51,7 +51,7 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallengeMethod: req.codeChallengeMethod,
 	}
 
-	code, err := h.svc.Authorize(r.Context(), params)
+	code, err := h.oauth.Authorize(r.Context(), params)
 	if err != nil {
 		h.handleAuthorizeError(w, r, err, req.redirectURI, req.state)
 		return

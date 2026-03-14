@@ -63,7 +63,7 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	userService := user.New(storage, h, cache, emailSender, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
 	authService := auth.New(storage, h, tokenService, log)
 	clientService := client.New(storage, log)
-	oauthService := oauth.New(storage, clientService, cache, tokenService, tokenService, cfg.OAuth.AuthCodeTTL, log)
+	oauthService := oauth.New(storage, clientService, cache, tokenService, cfg.OAuth.AuthCodeTTL, log)
 
 	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, cache, log)
 
@@ -139,7 +139,7 @@ func initHTTPServer(
 	ah := authhandler.NewHandler(authSvc, log)
 	th := tokenhandler.NewHandler(tokenSvc, log)
 	ch := clienthandler.NewHandler(clientSvc, log)
-	oh := oauthhandler.NewHandler(oauthSvc, log)
+	oh := oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, log)
 
 	loginRateLimit := middleware.RateLimit(
 		cache,

@@ -32,10 +32,6 @@ type TokenIssuer interface {
 	IssueTokenPair(ctx context.Context, userID, clientID string, scopes []string) (*model.TokenPair, error)
 }
 
-type TokenRefresher interface {
-	RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error)
-}
-
 type AuthCodeStore interface {
 	Set(ctx context.Context, key, value string, ttl time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
@@ -43,13 +39,12 @@ type AuthCodeStore interface {
 }
 
 type Service struct {
-	clients        ClientGetter
-	clientAuth     ClientAuthenticator
-	codeStore      AuthCodeStore
-	tokenIssuer    TokenIssuer
-	tokenRefresher TokenRefresher
-	authCodeTTL    time.Duration
-	log            *zap.Logger
+	clients     ClientGetter
+	clientAuth  ClientAuthenticator
+	codeStore   AuthCodeStore
+	tokenIssuer TokenIssuer
+	authCodeTTL time.Duration
+	log         *zap.Logger
 }
 
 func New(
@@ -57,18 +52,16 @@ func New(
 	clientAuth ClientAuthenticator,
 	codeStore AuthCodeStore,
 	tokenIssuer TokenIssuer,
-	tokenRefresh TokenRefresher,
 	authCodeTTL time.Duration,
 	log *zap.Logger,
 ) *Service {
 	return &Service{
-		clients:        clients,
-		clientAuth:     clientAuth,
-		codeStore:      codeStore,
-		tokenIssuer:    tokenIssuer,
-		tokenRefresher: tokenRefresh,
-		authCodeTTL:    authCodeTTL,
-		log:            log,
+		clients:     clients,
+		clientAuth:  clientAuth,
+		codeStore:   codeStore,
+		tokenIssuer: tokenIssuer,
+		authCodeTTL: authCodeTTL,
+		log:         log,
 	}
 }
 
