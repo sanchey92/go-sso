@@ -23,7 +23,7 @@ internal/
     user/             Register, VerifyEmail, ResetPassword
     token/            IssueTokenPair, RefreshTokens, RevokeToken
     client/           Create, GetByID, VerifySecret (OAuth clients)
-    oauth/            Authorize (OAuth 2.0 Authorization Code + PKCE)
+    oauth/            Authorize, ExchangeCode, RefreshTokens (OAuth 2.0 + PKCE)
   adapter/
     driving/          входящие: REST (chi), gRPC
     driven/           исходящие: PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, Email
@@ -171,7 +171,13 @@ task proto-gen
 │       ├── driving/
 │       │   └── rest/         HTTP server (chi), handlers, middleware
 │       │       ├── server.go        Server struct, routes, Start/Stop
-│       │       ├── handler/         5 handler structs (User, Auth, Token, OAuthClient, OAuth)
+│       │       ├── handler/         sub-packages по домену (ISP)
+│       │       │   ├── httputil/    общие HTTP-утилиты (DecodeJSON, RespondJSON, RespondError)
+│       │       │   ├── auth/        Login handler
+│       │       │   ├── user/        Register, VerifyEmail, ResetPassword handlers
+│       │       │   ├── token/       Refresh, Revoke handlers
+│       │       │   ├── client/      OAuth client CRUD handlers
+│       │       │   └── oauth/       Authorize, Token endpoint handlers
 │       │       └── middleware/      RequestID, Recovery, Logging, CORS, RateLimit
 │       └── driven/
 │           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo, OAuthClientRepo
