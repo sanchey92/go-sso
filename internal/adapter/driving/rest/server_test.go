@@ -12,7 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 )
 
@@ -41,11 +45,11 @@ var testCORSConfig = middleware.CORSConfig{
 func newTestServer() *Server {
 	return NewServer(
 		&Config{Host: "localhost", Port: 0},
-		&handler.UserHandler{},
-		&handler.AuthHandler{},
-		&handler.TokenHandler{},
-		&handler.OAuthClientHandler{},
-		&handler.OAuthHandler{},
+		&user.Handler{},
+		&auth.Handler{},
+		&token.Handler{},
+		&client.Handler{},
+		&oauth.Handler{},
 		noopMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
@@ -111,11 +115,11 @@ func TestCORSHeaders(t *testing.T) {
 func TestLoginRateLimitApplied(t *testing.T) {
 	srv := NewServer(
 		&Config{Host: "localhost", Port: 0},
-		&handler.UserHandler{},
-		&handler.AuthHandler{},
-		&handler.TokenHandler{},
-		&handler.OAuthClientHandler{},
-		&handler.OAuthHandler{},
+		&user.Handler{},
+		&auth.Handler{},
+		&token.Handler{},
+		&client.Handler{},
+		&oauth.Handler{},
 		blockingMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
@@ -135,11 +139,11 @@ func TestLoginRateLimitApplied(t *testing.T) {
 func TestLoginRateLimitNotAffectOtherRoutes(t *testing.T) {
 	srv := NewServer(
 		&Config{Host: "localhost", Port: 0},
-		&handler.UserHandler{},
-		&handler.AuthHandler{},
-		&handler.TokenHandler{},
-		&handler.OAuthClientHandler{},
-		&handler.OAuthHandler{},
+		&user.Handler{},
+		&auth.Handler{},
+		&token.Handler{},
+		&client.Handler{},
+		&oauth.Handler{},
 		blockingMiddleware,
 		testCORSConfig,
 		zap.NewNop(),

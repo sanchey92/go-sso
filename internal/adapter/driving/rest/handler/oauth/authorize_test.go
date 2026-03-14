@@ -1,4 +1,4 @@
-package handler
+package oauth
 
 import (
 	"fmt"
@@ -12,14 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mocks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
-func newOAuthHandler(t *testing.T) (*OAuthHandler, *mocks.OAuthAuthorizeService) {
+func newTestHandler(t *testing.T) (*Handler, *mocks.OAuthAuthorizeService) {
 	t.Helper()
 	svc := mocks.NewOAuthAuthorizeService(t)
-	h := NewOAuthHandler(svc, zap.NewNop())
+	h := NewHandler(svc, zap.NewNop())
 	return h, svc
 }
 
@@ -29,6 +29,14 @@ func doAuthorizeRequest(handler http.HandlerFunc, params url.Values) *httptest.R
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
+}
+
+func copyParams(src url.Values) url.Values {
+	dst := make(url.Values)
+	for k, v := range src {
+		dst[k] = append([]string{}, v...)
+	}
+	return dst
 }
 
 func TestOAuthHandler_Authorize(t *testing.T) {
@@ -167,7 +175,7 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newOAuthHandler(t)
+			h, svc := newTestHandler(t)
 			if tt.setupMock != nil {
 				tt.setupMock(svc)
 			}
@@ -188,12 +196,4 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 			}
 		})
 	}
-}
-
-func copyParams(src url.Values) url.Values {
-	dst := make(url.Values)
-	for k, v := range src {
-		dst[k] = append([]string{}, v...)
-	}
-	return dst
 }

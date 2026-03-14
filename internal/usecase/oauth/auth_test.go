@@ -106,7 +106,15 @@ func TestService_Authorize(t *testing.T) {
 			codeStore := mocks.NewAuthCodeStore(t)
 			tt.setupMocks(clientGetter, codeStore)
 
-			svc := New(clientGetter, codeStore, testAuthCodeTTL, zap.NewNop())
+			svc := New(
+				clientGetter,
+				mocks.NewClientAuthenticator(t),
+				codeStore,
+				mocks.NewTokenIssuer(t),
+				mocks.NewTokenRefresher(t),
+				testAuthCodeTTL,
+				zap.NewNop(),
+			)
 
 			code, err := svc.Authorize(ctx, tt.params)
 

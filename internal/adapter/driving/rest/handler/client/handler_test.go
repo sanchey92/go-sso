@@ -1,4 +1,4 @@
-package handler
+package client
 
 import (
 	"context"
@@ -14,16 +14,17 @@ import (
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mocks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-func newOAuthClientHandler(t *testing.T) (*OAuthClientHandler, *mocks.OAuthService) {
-	t.Helper()
-	svc := mocks.NewOAuthService(t)
-	h := NewOAuthClientHandler(svc, zap.NewNop())
-	return h, svc
+func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
 }
 
 func doRequestWithChiParam(handler http.HandlerFunc, method, path, paramName, paramValue, body string) *httptest.ResponseRecorder {
@@ -37,6 +38,13 @@ func doRequestWithChiParam(handler http.HandlerFunc, method, path, paramName, pa
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
+}
+
+func newTestHandler(t *testing.T) (*Handler, *mocks.OAuthService) {
+	t.Helper()
+	svc := mocks.NewOAuthService(t)
+	h := NewHandler(svc, zap.NewNop())
+	return h, svc
 }
 
 func TestOAuthClientHandler_Create(t *testing.T) {
@@ -98,7 +106,7 @@ func TestOAuthClientHandler_Create(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newOAuthClientHandler(t)
+			h, svc := newTestHandler(t)
 			tt.mockSetup(svc)
 
 			rec := doRequest(h.Create, http.MethodPost, "/api/v1/auth/oauth/clients/", tt.body)
@@ -160,7 +168,7 @@ func TestOAuthClientHandler_GetByID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newOAuthClientHandler(t)
+			h, svc := newTestHandler(t)
 			tt.mockSetup(svc)
 
 			rec := doRequestWithChiParam(h.GetByID, http.MethodGet, "/api/v1/auth/oauth/clients/"+tt.clientID, "id", tt.clientID, "")

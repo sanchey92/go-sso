@@ -22,7 +22,10 @@ packages:
   github.com/sanchey92/sso/internal/usecase/oauth:
     interfaces:
       ClientGetter:
+      ClientAuthenticator:
       AuthCodeStore:
+      TokenIssuer:
+      TokenRefresher:
   github.com/sanchey92/sso/internal/usecase/token:
     interfaces:
       TokenGenerator:
@@ -30,10 +33,18 @@ packages:
   github.com/sanchey92/sso/internal/usecase/client:
     interfaces:
       OAuthRepository:
-  github.com/sanchey92/sso/internal/adapter/driving/rest/handler:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth:
+    interfaces:
+      AuthService:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user:
     interfaces:
       UserService:
-      AuthService:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token:
+    interfaces:
       TokenService:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client:
+    interfaces:
       OAuthService:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth:
+    interfaces:
       OAuthAuthorizeService:

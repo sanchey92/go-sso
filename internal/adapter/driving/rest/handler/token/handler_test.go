@@ -1,22 +1,32 @@
-package handler
+package token
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mocks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-func newTokenHandler(t *testing.T) (*TokenHandler, *mocks.TokenService) {
+func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func newTestHandler(t *testing.T) (*Handler, *mocks.TokenService) {
 	t.Helper()
 	ts := mocks.NewTokenService(t)
-	h := NewTokenHandler(ts, zap.NewNop())
+	h := NewHandler(ts, zap.NewNop())
 	return h, ts
 }
 
@@ -73,7 +83,7 @@ func TestRefresh(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, ts := newTokenHandler(t)
+			h, ts := newTestHandler(t)
 			tt.mockSetup(ts)
 
 			rec := doRequest(h.Refresh, http.MethodPost, "/api/v1/auth/token/refresh", tt.body)
@@ -123,7 +133,7 @@ func TestRevoke(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, ts := newTokenHandler(t)
+			h, ts := newTestHandler(t)
 			tt.mockSetup(ts)
 
 			rec := doRequest(h.Revoke, http.MethodPost, "/api/v1/auth/token/revoke", tt.body)

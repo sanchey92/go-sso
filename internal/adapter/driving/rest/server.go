@@ -10,7 +10,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 )
 
@@ -24,11 +28,11 @@ type Config struct {
 type Server struct {
 	httpServer     *http.Server
 	router         chi.Router
-	userHandler    *handler.UserHandler
-	authHandler    *handler.AuthHandler
-	tokenHandler   *handler.TokenHandler
-	clientHandler  *handler.OAuthClientHandler
-	oauthHandler   *handler.OAuthHandler
+	userHandler    *user.Handler
+	authHandler    *auth.Handler
+	tokenHandler   *token.Handler
+	clientHandler  *client.Handler
+	oauthHandler   *oauth.Handler
 	loginRateLimit func(http.Handler) http.Handler
 	corsConfig     middleware.CORSConfig
 	log            *zap.Logger
@@ -36,11 +40,11 @@ type Server struct {
 
 func NewServer(
 	cfg *Config,
-	userH *handler.UserHandler,
-	authH *handler.AuthHandler,
-	tokenH *handler.TokenHandler,
-	clientH *handler.OAuthClientHandler,
-	oauthH *handler.OAuthHandler,
+	userH *user.Handler,
+	authH *auth.Handler,
+	tokenH *token.Handler,
+	clientH *client.Handler,
+	oauthH *oauth.Handler,
 	loginRateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
 	log *zap.Logger,

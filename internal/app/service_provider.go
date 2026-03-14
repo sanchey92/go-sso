@@ -13,7 +13,12 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler"
+	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
+	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
+	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
+	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
+	userhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/internal/usecase/auth"
@@ -52,13 +57,13 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	h := hasher.New(hasher.DefaultConfig())
 	emailSender := email.NewLogSender(log, cfg.Server.HTTP.BaseURL)
 
-	handler.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
+	httputil.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
 
 	tokenService := token.New(jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, cfg.Auth.Audience, log)
 	userService := user.New(storage, h, cache, emailSender, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
 	authService := auth.New(storage, h, tokenService, log)
 	clientService := client.New(storage, log)
-	oauthService := oauth.New(storage, cache, cfg.OAuth.AuthCodeTTL, log)
+	oauthService := oauth.New(storage, clientService, cache, tokenService, tokenService, cfg.OAuth.AuthCodeTTL, log)
 
 	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, cache, log)
 
@@ -130,11 +135,11 @@ func initHTTPServer(
 	cache *redis.Cache,
 	log *zap.Logger,
 ) *rest.Server {
-	userHandler := handler.NewUserHandler(userSvc, log)
-	authHandler := handler.NewAuthHandler(authSvc, log)
-	tokenHandler := handler.NewTokenHandler(tokenSvc, log)
-	clientHandler := handler.NewOAuthClientHandler(clientSvc, log)
-	oauthHandler := handler.NewOAuthHandler(oauthSvc, log)
+	uh := userhandler.NewHandler(userSvc, log)
+	ah := authhandler.NewHandler(authSvc, log)
+	th := tokenhandler.NewHandler(tokenSvc, log)
+	ch := clienthandler.NewHandler(clientSvc, log)
+	oh := oauthhandler.NewHandler(oauthSvc, log)
 
 	loginRateLimit := middleware.RateLimit(
 		cache,
@@ -159,5 +164,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, userHandler, authHandler, tokenHandler, clientHandler, oauthHandler, loginRateLimit, corsCfg, log)
+	}, uh, ah, th, ch, oh, loginRateLimit, corsCfg, log)
 }

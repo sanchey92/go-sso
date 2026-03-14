@@ -8,3 +8,11 @@ type AuthorizationCode struct {
 	CodeChallenge       string `json:"code_challenge"`
 	CodeChallengeMethod string `json:"code_challenge_method"`
 }
+
+type CodeExchangeRequest struct {
+	Code         string
+	RedirectURI  string
+	CodeVerifier string
+	ClientID     string
+	ClientSecret string
+}

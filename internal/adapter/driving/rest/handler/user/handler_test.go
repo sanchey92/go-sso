@@ -1,23 +1,33 @@
-package handler
+package user
 
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mocks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-func newUserHandler(t *testing.T) (*UserHandler, *mocks.UserService) {
+func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func newTestHandler(t *testing.T) (*Handler, *mocks.UserService) {
 	t.Helper()
 	us := mocks.NewUserService(t)
-	h := NewUserHandler(us, zap.NewNop())
+	h := NewHandler(us, zap.NewNop())
 	return h, us
 }
 
@@ -80,7 +90,7 @@ func TestRegister(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, us := newUserHandler(t)
+			h, us := newTestHandler(t)
 			tt.mockSetup(us)
 
 			rec := doRequest(h.Register, http.MethodPost, "/api/v1/auth/register", tt.body)
@@ -138,7 +148,7 @@ func TestRequestPasswordReset(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, us := newUserHandler(t)
+			h, us := newTestHandler(t)
 			tt.mockSetup(us)
 
 			rec := doRequest(h.RequestPasswordReset, http.MethodPost, "/api/v1/auth/password/reset-request", tt.body)
@@ -221,7 +231,7 @@ func TestResetPassword(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, us := newUserHandler(t)
+			h, us := newTestHandler(t)
 			tt.mockSetup(us)
 
 			rec := doRequest(h.ResetPassword, http.MethodPost, "/api/v1/auth/password/reset", tt.body)
@@ -294,7 +304,7 @@ func TestVerifyEmail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, us := newUserHandler(t)
+			h, us := newTestHandler(t)
 			tt.mockSetup(us)
 
 			rec := doRequest(h.VerifyEmail, http.MethodPost, "/api/v1/auth/email/verify", tt.body)

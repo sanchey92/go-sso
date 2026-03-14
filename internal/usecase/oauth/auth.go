@@ -3,7 +3,9 @@ package oauth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -22,6 +24,18 @@ type ClientGetter interface {
 	GetClientByID(ctx context.Context, id string) (*model.OAuthClient, error)
 }
 
+type ClientAuthenticator interface {
+	VerifySecret(ctx context.Context, clientID, rawSecret string) (*model.OAuthClient, error)
+}
+
+type TokenIssuer interface {
+	IssueTokenPair(ctx context.Context, userID, clientID string, scopes []string) (*model.TokenPair, error)
+}
+
+type TokenRefresher interface {
+	RefreshTokens(ctx context.Context, refreshToken string) (*model.TokenPair, error)
+}
+
 type AuthCodeStore interface {
 	Set(ctx context.Context, key, value string, ttl time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
@@ -29,18 +43,32 @@ type AuthCodeStore interface {
 }
 
 type Service struct {
-	clients     ClientGetter
-	codeStore   AuthCodeStore
-	authCodeTTL time.Duration
-	log         *zap.Logger
+	clients        ClientGetter
+	clientAuth     ClientAuthenticator
+	codeStore      AuthCodeStore
+	tokenIssuer    TokenIssuer
+	tokenRefresher TokenRefresher
+	authCodeTTL    time.Duration
+	log            *zap.Logger
 }
 
-func New(clients ClientGetter, codeStore AuthCodeStore, authCodeTTL time.Duration, log *zap.Logger) *Service {
+func New(
+	clients ClientGetter,
+	clientAuth ClientAuthenticator,
+	codeStore AuthCodeStore,
+	tokenIssuer TokenIssuer,
+	tokenRefresh TokenRefresher,
+	authCodeTTL time.Duration,
+	log *zap.Logger,
+) *Service {
 	return &Service{
-		clients:     clients,
-		codeStore:   codeStore,
-		authCodeTTL: authCodeTTL,
-		log:         log,
+		clients:        clients,
+		clientAuth:     clientAuth,
+		codeStore:      codeStore,
+		tokenIssuer:    tokenIssuer,
+		tokenRefresher: tokenRefresh,
+		authCodeTTL:    authCodeTTL,
+		log:            log,
 	}
 }
 
@@ -75,6 +103,66 @@ func (s *Service) Authorize(ctx context.Context, params *model.AuthorizationCode
 	)
 
 	return code, nil
+}
+
+func (s *Service) ExchangeCode(ctx context.Context, params *model.CodeExchangeRequest) (*model.TokenPair, error) {
+	key := authCodeKeyPrefix + params.Code
+
+	data, err := s.codeStore.Get(ctx, key)
+	if err != nil {
+		if errors.Is(err, domainerrors.ErrKeyNotFound) {
+			return nil, domainerrors.ErrInvalidAuthorizationCode
+		}
+		return nil, fmt.Errorf("get auth code: %w", err)
+	}
+
+	if err := s.codeStore.Delete(ctx, key); err != nil {
+		s.log.Error("failed to delete auth code", zap.Error(err))
+	}
+
+	var authCode model.AuthorizationCode
+	if err := json.Unmarshal([]byte(data), &authCode); err != nil {
+		return nil, fmt.Errorf("unmarshal auth code: %w", err)
+	}
+
+	if authCode.ClientID != params.ClientID || authCode.RedirectURI != params.RedirectURI {
+		return nil, domainerrors.ErrInvalidAuthorizationCode
+	}
+
+	if !crypto.VerifyPKCE(params.CodeVerifier, authCode.CodeChallenge) {
+		return nil, domainerrors.ErrInvalidAuthorizationCode
+	}
+
+	client, err := s.clients.GetClientByID(ctx, params.ClientID)
+	if err != nil {
+		return nil, fmt.Errorf("get client: %w", err)
+	}
+
+	if client.IsConfidential {
+		if params.ClientSecret == "" {
+			return nil, domainerrors.ErrInvalidCredentials
+		}
+		if _, err := s.clientAuth.VerifySecret(ctx, params.ClientID, params.ClientSecret); err != nil {
+			return nil, fmt.Errorf("verify client secret: %w", err)
+		}
+	}
+
+	var scopes []string
+	if authCode.Scope != "" {
+		scopes = strings.Fields(authCode.Scope)
+	}
+
+	pair, err := s.tokenIssuer.IssueTokenPair(ctx, authCode.UserID, params.ClientID, scopes)
+	if err != nil {
+		return nil, fmt.Errorf("issue code: %w", err)
+	}
+
+	s.log.Info("authorization code exchanged",
+		zap.String("client_id", params.ClientID),
+		zap.String("user_id", authCode.UserID),
+	)
+
+	return pair, nil
 }
 
 func containsURI(uris []string, target string) bool {

@@ -1,22 +1,32 @@
-package handler
+package auth
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mocks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 
-func newAuthHandler(t *testing.T) (*AuthHandler, *mocks.AuthService) {
+func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func newTestHandler(t *testing.T) (*Handler, *mocks.AuthService) {
 	t.Helper()
 	as := mocks.NewAuthService(t)
-	h := NewAuthHandler(as, zap.NewNop())
+	h := NewHandler(as, zap.NewNop())
 	return h, as
 }
 
@@ -73,7 +83,7 @@ func TestLogin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, as := newAuthHandler(t)
+			h, as := newTestHandler(t)
 			tt.mockSetup(as)
 
 			rec := doRequest(h.Login, http.MethodPost, "/api/v1/auth/login", tt.body)

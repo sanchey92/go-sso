@@ -1,33 +1,17 @@
-package handler
+package oauth
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/url"
 
 	"go.uber.org/zap"
 
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
-
-type OAuthAuthorizeService interface {
-	Authorize(ctx context.Context, params *model.AuthorizationCode) (code string, err error)
-}
-
-type OAuthHandler struct {
-	svc OAuthAuthorizeService
-	log *zap.Logger
-}
-
-func NewOAuthHandler(svc OAuthAuthorizeService, log *zap.Logger) *OAuthHandler {
-	return &OAuthHandler{
-		svc: svc,
-		log: log,
-	}
-}
 
 type authorizeRequest struct {
 	clientID            string
@@ -41,17 +25,17 @@ type authorizeRequest struct {
 }
 
 type authzValidationError struct {
-	httpError bool // true → respondError (JSON), false → redirectWithError
+	httpError bool // true -> respondError (JSON), false -> redirectWithError
 	code      string
 	desc      string
 }
 
-func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request) {
 	req := parseAuthorizeRequest(r)
 
 	if vErr := req.validate(); vErr != nil {
 		if vErr.httpError {
-			respondError(w, http.StatusBadRequest, vErr.desc, vErr.code)
+			httputil.RespondError(w, http.StatusBadRequest, vErr.desc, vErr.code)
 		} else {
 			redirectWithError(w, r, req.redirectURI, vErr.code, vErr.desc, req.state)
 		}
@@ -115,16 +99,16 @@ func (req authorizeRequest) validate() *authzValidationError {
 	return nil
 }
 
-func (h *OAuthHandler) handleAuthorizeError(w http.ResponseWriter, r *http.Request,
+func (h *Handler) handleAuthorizeError(w http.ResponseWriter, r *http.Request,
 	err error, redirectURI, state string,
 ) {
 	switch {
 	case errors.Is(err, domainerrors.ErrOAuthClientNotFound):
 		// RFC 6749 §4.1.2.1: НЕ редиректить при невалидном client_id
-		respondError(w, http.StatusBadRequest, "invalid client_id", "INVALID_CLIENT")
+		httputil.RespondError(w, http.StatusBadRequest, "invalid client_id", "INVALID_CLIENT")
 	case errors.Is(err, domainerrors.ErrInvalidRedirectURI):
 		// RFC 6749 §4.1.2.1: НЕ редиректить при невалидном redirect_uri
-		respondError(w, http.StatusBadRequest, "invalid redirect_uri", "INVALID_REDIRECT_URI")
+		httputil.RespondError(w, http.StatusBadRequest, "invalid redirect_uri", "INVALID_REDIRECT_URI")
 	default:
 		h.log.Error("authorize error",
 			zap.Error(err),
@@ -139,7 +123,7 @@ func redirectWithError(w http.ResponseWriter, r *http.Request,
 ) {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid redirect_uri", "INVALID_REQUEST")
+		httputil.RespondError(w, http.StatusBadRequest, "invalid redirect_uri", "INVALID_REQUEST")
 		return
 	}
 	q := u.Query()
