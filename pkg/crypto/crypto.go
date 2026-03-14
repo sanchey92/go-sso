@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -29,4 +30,10 @@ func GenerateUUID() (string, error) {
 		return "", fmt.Errorf("generate uuid: %w", err)
 	}
 	return id.String(), nil
+}
+
+func VerifyPKCE(codeVerifier, codeChallenge string) bool {
+	hash := sha256.Sum256([]byte(codeVerifier))
+	computed := base64.RawURLEncoding.EncodeToString(hash[:])
+	return subtle.ConstantTimeCompare([]byte(computed), []byte(codeChallenge)) == 1
 }
