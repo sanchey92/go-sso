@@ -16,11 +16,13 @@ import (
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
-func newTestHandler(t *testing.T) (*Handler, *mocks.OAuthAuthorizeService) {
+func newTestHandler(t *testing.T) (*Handler, *mocks.OAuthorizer, *mocks.Exchanger, *mocks.Refresher) {
 	t.Helper()
-	svc := mocks.NewOAuthAuthorizeService(t)
-	h := NewHandler(svc, zap.NewNop())
-	return h, svc
+	auth := mocks.NewOAuthorizer(t)
+	ex := mocks.NewExchanger(t)
+	ref := mocks.NewRefresher(t)
+	h := NewHandler(auth, ex, ref, zap.NewNop())
+	return h, auth, ex, ref
 }
 
 func doAuthorizeRequest(handler http.HandlerFunc, params url.Values) *httptest.ResponseRecorder {
@@ -54,7 +56,7 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 	tests := []struct {
 		name          string
 		params        url.Values
-		setupMock     func(svc *mocks.OAuthAuthorizeService)
+		setupMock     func(svc *mocks.OAuthorizer)
 		wantStatus    int
 		wantRedirect  bool
 		checkRedirect func(t *testing.T, location string)
@@ -63,7 +65,7 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 		{
 			name:   "successful authorize — redirects with code and state",
 			params: validParams,
-			setupMock: func(svc *mocks.OAuthAuthorizeService) {
+			setupMock: func(svc *mocks.OAuthorizer) {
 				svc.EXPECT().
 					Authorize(mock.Anything, mock.AnythingOfType("*model.AuthorizationCode")).
 					Return("test-auth-code", nil)
@@ -148,7 +150,7 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 		{
 			name:   "invalid client_id — direct error (no redirect per RFC)",
 			params: validParams,
-			setupMock: func(svc *mocks.OAuthAuthorizeService) {
+			setupMock: func(svc *mocks.OAuthorizer) {
 				svc.EXPECT().
 					Authorize(mock.Anything, mock.Anything).
 					Return("", fmt.Errorf("get client: %w", domainerrors.ErrOAuthClientNotFound))
@@ -161,7 +163,7 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 		{
 			name:   "invalid redirect_uri — direct error (no redirect per RFC)",
 			params: validParams,
-			setupMock: func(svc *mocks.OAuthAuthorizeService) {
+			setupMock: func(svc *mocks.OAuthorizer) {
 				svc.EXPECT().
 					Authorize(mock.Anything, mock.Anything).
 					Return("", domainerrors.ErrInvalidRedirectURI)
@@ -175,9 +177,9 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, svc := newTestHandler(t)
+			h, authMock, _, _ := newTestHandler(t)
 			if tt.setupMock != nil {
-				tt.setupMock(svc)
+				tt.setupMock(authMock)
 			}
 
 			rec := doAuthorizeRequest(h.Authorize, tt.params)

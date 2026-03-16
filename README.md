@@ -81,6 +81,7 @@ POST   /api/v1/auth/email/verify           200  Верификация email
 POST   /api/v1/auth/password/reset-request 200  Запрос сброса пароля
 POST   /api/v1/auth/password/reset         200  Сброс пароля по токену
 GET    /api/v1/oauth/authorize             302  OAuth 2.0 Authorization Code + PKCE
+POST   /api/v1/oauth/token                200  Token endpoint (code exchange, refresh grant)
 POST   /api/v1/oauth/clients/              201  Регистрация OAuth-клиента → client_id + client_secret
 GET    /api/v1/oauth/clients/{id}          200  Получение OAuth-клиента (без secret)
 GET    /healthz                            200  Health check
@@ -100,7 +101,7 @@ GET    /healthz                            200  Health check
 |------|------------|--------|
 | TASK-023 | Регистрация OAuth-клиентов (client_id/secret, bcrypt) | done |
 | TASK-024 | Authorization Code + PKCE (`/oauth/authorize`) | done |
-| TASK-025 | Token endpoint (code exchange, PKCE verify, refresh grant) | planned |
+| TASK-025 | Token endpoint (code exchange, PKCE verify, refresh grant) | done |
 | TASK-026 | Token revocation (RFC 7009) + OIDC Discovery (`/.well-known/openid-configuration`) | planned |
 | TASK-027 | JWKS endpoint (`/.well-known/jwks.json`) + UserInfo | planned |
 | TASK-028 | E2E-тесты полного OAuth flow | planned |

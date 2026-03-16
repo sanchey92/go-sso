@@ -47,4 +47,6 @@ packages:
       OAuthService:
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth:
     interfaces:
-      OAuthAuthorizeService:
+      OAuthorizer:
+      Exchanger:
+      Refresher:
