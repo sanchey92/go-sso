@@ -50,3 +50,4 @@ packages:
       OAuthorizer:
       Exchanger:
       Refresher:
+      Revoker:
