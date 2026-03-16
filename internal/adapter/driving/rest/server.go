@@ -98,6 +98,7 @@ func (s *Server) setupRoutes() {
 
 	s.router.Route("/api/v1/oauth", func(r chi.Router) {
 		r.Get("/authorize", s.oauthHandler.Authorize)
+		r.Post("/token", s.oauthHandler.Token)
 		r.Get("/clients/{id}", s.clientHandler.GetByID)
 		r.Post("/clients/", s.clientHandler.Create)
 	})
