@@ -64,6 +64,36 @@ func (s *Storage) GetByEmail(ctx context.Context, email string) (*model.User, er
 	return &user, nil
 }
 
+func (s *Storage) GetByID(ctx context.Context, id string) (*model.User, error) {
+	query := `SELECT id, email, password_hash, email_verified, mfa_enabled,
+              mfa_secret_enc, status, created_at, updated_at
+              FROM users
+              WHERE id = $1`
+
+	var user model.User
+	var status string
+
+	err := s.pool.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.EmailVerified,
+		&user.MFAEnabled,
+		&user.MFASecretEnc,
+		&status,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domainerrors.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("select user by id: %w", err)
+	}
+	user.Status = model.UserStatus(status)
+	return &user, nil
+}
+
 func (s *Storage) UpdateEmailVerified(ctx context.Context, userID string, verified bool) error {
 	query := `UPDATE users
 	          SET email_verified = $1, updated_at = now()
