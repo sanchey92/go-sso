@@ -13,6 +13,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -34,6 +35,7 @@ type Server struct {
 	tokenHandler     *token.Handler
 	clientHandler    *client.Handler
 	oauthHandler     *oauth.Handler
+	jwksHandler      *jwks.Handler
 	discoveryHandler *discovery.Handler
 	loginRateLimit   func(http.Handler) http.Handler
 	corsConfig       middleware.CORSConfig
@@ -47,6 +49,7 @@ func NewServer(
 	tokenH *token.Handler,
 	clientH *client.Handler,
 	oauthH *oauth.Handler,
+	jwksH *jwks.Handler,
 	discoverH *discovery.Handler,
 	loginRateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
@@ -61,6 +64,7 @@ func NewServer(
 		tokenHandler:     tokenH,
 		clientHandler:    clientH,
 		oauthHandler:     oauthH,
+		jwksHandler:      jwksH,
 		discoveryHandler: discoverH,
 		loginRateLimit:   loginRateLimit,
 		corsConfig:       corsCfg,
@@ -108,8 +112,9 @@ func (s *Server) setupRoutes() {
 		r.Post("/clients/", s.clientHandler.Create)
 	})
 
-	// OIDC Discovery — must be at well-known path (root level, not under /api/v1)
+	// OIDC Discovery + JWKS — must be at well-known paths (root level, not under /api/v1)
 	s.router.Get("/.well-known/openid-configuration", s.discoveryHandler.Discovery)
+	s.router.Get("/.well-known/jwks.json", s.jwksHandler.JWKS)
 
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

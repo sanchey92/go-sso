@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -26,6 +27,7 @@ type Config struct {
 
 type Service struct {
 	cfg        *Config
+	mu         sync.RWMutex
 	currentKey *KeyPair
 	allKeys    map[string]*KeyPair
 }
@@ -43,6 +45,10 @@ func NewService(cfg *Config) (*Service, error) {
 }
 
 func (s *Service) GenerateToken(userID, audience string) (string, error) {
+	s.mu.RLock()
+	key := s.currentKey
+	s.mu.RUnlock()
+
 	now := time.Now()
 
 	claims := jwt.RegisteredClaims{
@@ -54,8 +60,8 @@ func (s *Service) GenerateToken(userID, audience string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	token.Header["kid"] = s.currentKey.KID
-	signed, err := token.SignedString(s.currentKey.PrivateKey)
+	token.Header["kid"] = key.KID
+	signed, err := token.SignedString(key.PrivateKey)
 	if err != nil {
 		return "", fmt.Errorf("sign token: %w", err)
 	}
@@ -71,7 +77,9 @@ func (s *Service) ValidateToken(tokenStr string) (*Claims, error) {
 		if !ok {
 			return nil, fmt.Errorf("missing kid in token header")
 		}
+		s.mu.RLock()
 		key, exists := s.allKeys[kid]
+		s.mu.RUnlock()
 		if !exists {
 			return nil, fmt.Errorf("unknown kid: %s", kid)
 		}
@@ -107,7 +115,25 @@ func (s *Service) GenerateRefreshToken() (string, string, error) {
 	return raw, hash, nil
 }
 
+func (s *Service) RotateKey() error {
+	kp, err := GenerateKeyPair()
+	if err != nil {
+		return fmt.Errorf("generate key pair: %w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.allKeys[kp.KID] = kp
+	s.currentKey = kp
+
+	return nil
+}
+
 func (s *Service) GetJWKS() *JWKS {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	keys := make([]JWK, 0, len(s.allKeys))
 	for _, kp := range s.allKeys {
 		keys = append(keys, JWK{
@@ -115,6 +141,7 @@ func (s *Service) GetJWKS() *JWKS {
 			CRV: "Ed25519",
 			KID: kp.KID,
 			Use: "sig",
+			Alg: "EdDSA",
 			X:   base64.RawURLEncoding.EncodeToString(kp.PublicKey),
 		})
 	}

@@ -36,6 +36,7 @@ type JWK struct {
 	CRV string `json:"crv"`
 	KID string `json:"kid"`
 	Use string `json:"use"`
+	Alg string `json:"alg"`
 	X   string `json:"x"`
 }
 

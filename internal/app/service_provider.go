@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -17,6 +18,7 @@ import (
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
+	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	userhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -66,7 +68,11 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	clientService := client.New(storage, log)
 	oauthService := oauth.New(storage, clientService, cache, tokenService, cfg.OAuth.AuthCodeTTL, log)
 
-	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, cache, log)
+	jwksProvider := func() ([]byte, error) {
+		return json.Marshal(jwtService.GetJWKS())
+	}
+
+	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, jwksProvider, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -133,6 +139,7 @@ func initHTTPServer(
 	tokenSvc *token.Service,
 	clientSvc *client.Service,
 	oauthSvc *oauth.Service,
+	jwksProvider func() ([]byte, error),
 	cache *redis.Cache,
 	log *zap.Logger,
 ) *rest.Server {
@@ -141,6 +148,7 @@ func initHTTPServer(
 	th := tokenhandler.NewHandler(tokenSvc, log)
 	ch := clienthandler.NewHandler(clientSvc, log)
 	oh := oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, tokenSvc, log)
+	jh := jwkshandler.NewHandler(jwksProvider, log)
 	dh := discoveryhandler.NewHandler(&discoveryhandler.Config{
 		Issuer:  cfg.Auth.Issuer,
 		BaseURL: cfg.Server.HTTP.BaseURL,
@@ -169,5 +177,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, uh, ah, th, ch, oh, dh, loginRateLimit, corsCfg, log)
+	}, uh, ah, th, ch, oh, jh, dh, loginRateLimit, corsCfg, log)
 }
