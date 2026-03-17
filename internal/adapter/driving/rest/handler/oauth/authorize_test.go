@@ -16,13 +16,14 @@ import (
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
-func newTestHandler(t *testing.T) (*Handler, *mocks.OAuthorizer, *mocks.Exchanger, *mocks.Refresher) {
+func newTestHandler(t *testing.T) (*Handler, *mocks.OAuthorizer, *mocks.Exchanger, *mocks.Refresher, *mocks.Revoker) {
 	t.Helper()
 	auth := mocks.NewOAuthorizer(t)
 	ex := mocks.NewExchanger(t)
 	ref := mocks.NewRefresher(t)
-	h := NewHandler(auth, ex, ref, zap.NewNop())
-	return h, auth, ex, ref
+	rev := mocks.NewRevoker(t)
+	h := NewHandler(auth, ex, ref, rev, zap.NewNop())
+	return h, auth, ex, ref, rev
 }
 
 func doAuthorizeRequest(handler http.HandlerFunc, params url.Values) *httptest.ResponseRecorder {
@@ -177,7 +178,7 @@ func TestOAuthHandler_Authorize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, authMock, _, _ := newTestHandler(t)
+			h, authMock, _, _, _ := newTestHandler(t)
 			if tt.setupMock != nil {
 				tt.setupMock(authMock)
 			}

@@ -52,7 +52,7 @@ func TestToken_UnsupportedGrantType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, _, _, _ := newTestHandler(t)
+			h, _, _, _, _ := newTestHandler(t)
 			rec := doTokenRequest(h.Token, tt.form)
 
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -229,7 +229,7 @@ func TestToken_AuthorizationCodeGrant(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, _, exMock, _ := newTestHandler(t)
+			h, _, exMock, _, _ := newTestHandler(t)
 			if tt.setupMock != nil {
 				tt.setupMock(exMock)
 			}
@@ -363,7 +363,7 @@ func TestToken_RefreshTokenGrant(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h, _, _, refMock := newTestHandler(t)
+			h, _, _, refMock, _ := newTestHandler(t)
 			if tt.setupMock != nil {
 				tt.setupMock(refMock)
 			}

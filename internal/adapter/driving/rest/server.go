@@ -12,6 +12,7 @@ import (
 
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -26,16 +27,17 @@ type Config struct {
 }
 
 type Server struct {
-	httpServer     *http.Server
-	router         chi.Router
-	userHandler    *user.Handler
-	authHandler    *auth.Handler
-	tokenHandler   *token.Handler
-	clientHandler  *client.Handler
-	oauthHandler   *oauth.Handler
-	loginRateLimit func(http.Handler) http.Handler
-	corsConfig     middleware.CORSConfig
-	log            *zap.Logger
+	httpServer       *http.Server
+	router           chi.Router
+	userHandler      *user.Handler
+	authHandler      *auth.Handler
+	tokenHandler     *token.Handler
+	clientHandler    *client.Handler
+	oauthHandler     *oauth.Handler
+	discoveryHandler *discovery.Handler
+	loginRateLimit   func(http.Handler) http.Handler
+	corsConfig       middleware.CORSConfig
+	log              *zap.Logger
 }
 
 func NewServer(
@@ -45,6 +47,7 @@ func NewServer(
 	tokenH *token.Handler,
 	clientH *client.Handler,
 	oauthH *oauth.Handler,
+	discoverH *discovery.Handler,
 	loginRateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
 	log *zap.Logger,
@@ -52,15 +55,16 @@ func NewServer(
 	r := chi.NewRouter()
 
 	s := &Server{
-		router:         r,
-		userHandler:    userH,
-		authHandler:    authH,
-		tokenHandler:   tokenH,
-		clientHandler:  clientH,
-		oauthHandler:   oauthH,
-		loginRateLimit: loginRateLimit,
-		corsConfig:     corsCfg,
-		log:            log,
+		router:           r,
+		userHandler:      userH,
+		authHandler:      authH,
+		tokenHandler:     tokenH,
+		clientHandler:    clientH,
+		oauthHandler:     oauthH,
+		discoveryHandler: discoverH,
+		loginRateLimit:   loginRateLimit,
+		corsConfig:       corsCfg,
+		log:              log,
 	}
 
 	s.setupMiddleware()
@@ -99,9 +103,13 @@ func (s *Server) setupRoutes() {
 	s.router.Route("/api/v1/oauth", func(r chi.Router) {
 		r.Get("/authorize", s.oauthHandler.Authorize)
 		r.Post("/token", s.oauthHandler.Token)
+		r.Post("/revoke", s.oauthHandler.Revoke)
 		r.Get("/clients/{id}", s.clientHandler.GetByID)
 		r.Post("/clients/", s.clientHandler.Create)
 	})
+
+	// OIDC Discovery — must be at well-known path (root level, not under /api/v1)
+	s.router.Get("/.well-known/openid-configuration", s.discoveryHandler.Discovery)
 
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

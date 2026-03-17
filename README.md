@@ -76,14 +76,16 @@ pkg/
 POST   /api/v1/auth/register               201  Регистрация
 POST   /api/v1/auth/login                  200  Login → access + refresh tokens
 POST   /api/v1/auth/token/refresh          200  Ротация refresh token
-POST   /api/v1/auth/token/revoke           204  Отзыв refresh token
+POST   /api/v1/auth/token/revoke           204  Отзыв refresh token (internal)
 POST   /api/v1/auth/email/verify           200  Верификация email
 POST   /api/v1/auth/password/reset-request 200  Запрос сброса пароля
 POST   /api/v1/auth/password/reset         200  Сброс пароля по токену
 GET    /api/v1/oauth/authorize             302  OAuth 2.0 Authorization Code + PKCE
 POST   /api/v1/oauth/token                200  Token endpoint (code exchange, refresh grant)
+POST   /api/v1/oauth/revoke               200  Token revocation (RFC 7009, always 200)
 POST   /api/v1/oauth/clients/              201  Регистрация OAuth-клиента → client_id + client_secret
 GET    /api/v1/oauth/clients/{id}          200  Получение OAuth-клиента (без secret)
+GET    /.well-known/openid-configuration   200  OIDC Discovery (issuer, endpoints, scopes)
 GET    /healthz                            200  Health check
 ```
 
@@ -102,7 +104,7 @@ GET    /healthz                            200  Health check
 | TASK-023 | Регистрация OAuth-клиентов (client_id/secret, bcrypt) | done |
 | TASK-024 | Authorization Code + PKCE (`/oauth/authorize`) | done |
 | TASK-025 | Token endpoint (code exchange, PKCE verify, refresh grant) | done |
-| TASK-026 | Token revocation (RFC 7009) + OIDC Discovery (`/.well-known/openid-configuration`) | planned |
+| TASK-026 | Token revocation (RFC 7009) + OIDC Discovery (`/.well-known/openid-configuration`) | done |
 | TASK-027 | JWKS endpoint (`/.well-known/jwks.json`) + UserInfo | planned |
 | TASK-028 | E2E-тесты полного OAuth flow | planned |
 
@@ -110,7 +112,8 @@ GET    /healthz                            200  Health check
 - Любое приложение сможет интегрироваться через стандартный OAuth 2.0 / OIDC
 - PKCE (S256) обязателен — защита от authorization code interception
 - Authorization code одноразовый (TTL 60s, Redis)
-- OIDC Discovery — автоматическая конфигурация для клиентов
+- OIDC Discovery — автоматическая конфигурация для клиентов (issuer, endpoints, scopes, grant_types)
+- Token revocation (RFC 7009) — безопасный отзыв refresh tokens
 - JWKS — публичные ключи для верификации JWT без обращения к серверу
 
 ## Phases 3-6: Roadmap
@@ -167,7 +170,7 @@ task proto-gen
 │   │   ├── user/             Register, VerifyEmail, ResetPassword + interfaces
 │   │   ├── token/            IssueTokenPair, RefreshTokens, RevokeToken + interfaces
 │   │   ├── client/           Create, GetByID, VerifySecret (OAuth clients) + interfaces
-│   │   └── oauth/            Authorize (Authorization Code + PKCE) + interfaces
+│   │   └── oauth/            Authorize, ExchangeCode (OAuth 2.0 + PKCE) + interfaces
 │   └── adapter/
 │       ├── driving/
 │       │   └── rest/         HTTP server (chi), handlers, middleware
@@ -178,7 +181,8 @@ task proto-gen
 │       │       │   ├── user/        Register, VerifyEmail, ResetPassword handlers
 │       │       │   ├── token/       Refresh, Revoke handlers
 │       │       │   ├── client/      OAuth client CRUD handlers
-│       │       │   └── oauth/       Authorize, Token endpoint handlers
+│       │       │   ├── oauth/       Authorize, Token, Revoke (RFC 7009) handlers
+│       │       │   └── discovery/   OIDC Discovery (/.well-known/openid-configuration)
 │       │       └── middleware/      RequestID, Recovery, Logging, CORS, RateLimit
 │       └── driven/
 │           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo, OAuthClientRepo

@@ -31,7 +31,7 @@ type Handler struct {
 	response []byte // pre-serialized JSON (immutable)
 }
 
-func NewHandler(cfg Config) *Handler {
+func NewHandler(cfg *Config) *Handler {
 	resp := discoveryResponse{
 		Issuer:                            cfg.Issuer,
 		AuthorizationEndpoint:             cfg.BaseURL + "/api/v1/oauth/authorize",

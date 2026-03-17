@@ -15,6 +15,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
+	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
@@ -139,7 +140,11 @@ func initHTTPServer(
 	ah := authhandler.NewHandler(authSvc, log)
 	th := tokenhandler.NewHandler(tokenSvc, log)
 	ch := clienthandler.NewHandler(clientSvc, log)
-	oh := oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, log)
+	oh := oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, tokenSvc, log)
+	dh := discoveryhandler.NewHandler(&discoveryhandler.Config{
+		Issuer:  cfg.Auth.Issuer,
+		BaseURL: cfg.Server.HTTP.BaseURL,
+	})
 
 	loginRateLimit := middleware.RateLimit(
 		cache,
@@ -164,5 +169,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, uh, ah, th, ch, oh, loginRateLimit, corsCfg, log)
+	}, uh, ah, th, ch, oh, dh, loginRateLimit, corsCfg, log)
 }
