@@ -26,8 +26,13 @@ const (
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
+	GetByID(ctx context.Context, id string) (*model.User, error)
 	UpdateEmailVerified(ctx context.Context, userID string, verified bool) error
 	UpdatePassword(ctx context.Context, userID, passwordHash string) error
+}
+
+type TokenValidator interface {
+	ValidateToken(token string) (subject string, err error)
 }
 
 type TokenRevoker interface {
@@ -54,6 +59,7 @@ type Service struct {
 	hasher          PasswordHasher
 	cache           CacheStore
 	email           EmailSender
+	tokenValidator  TokenValidator
 	tokenRevoker    TokenRevoker
 	verificationTTL time.Duration
 	resetTTL        time.Duration
@@ -65,6 +71,7 @@ func New(
 	h PasswordHasher,
 	cs CacheStore,
 	es EmailSender,
+	tv TokenValidator,
 	tr TokenRevoker,
 	verificationTTL, resetTTL time.Duration,
 	log *zap.Logger,
@@ -74,6 +81,7 @@ func New(
 		hasher:          h,
 		cache:           cs,
 		email:           es,
+		tokenValidator:  tv,
 		tokenRevoker:    tr,
 		verificationTTL: verificationTTL,
 		resetTTL:        resetTTL,
@@ -223,6 +231,23 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	}
 	s.log.Info("password reset completed", zap.String("user_id", userID))
 	return nil
+}
+
+func (s *Service) GetUserInfo(ctx context.Context, accessToken string) (*model.UserInfo, error) {
+	subject, err := s.tokenValidator.ValidateToken(accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("validate token: %w", err)
+	}
+	u, err := s.userRepo.GetByID(ctx, subject)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	return &model.UserInfo{
+		Sub:           u.ID,
+		Email:         u.Email,
+		EmailVerified: u.EmailVerified,
+	}, nil
 }
 
 func validateEmail(email string) error {

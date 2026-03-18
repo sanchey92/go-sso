@@ -22,6 +22,12 @@ type User struct {
 	UpdatedAt     time.Time
 }
 
+type UserInfo struct {
+	Sub           string
+	Email         string
+	EmailVerified bool
+}
+
 func NewUser(email, hash string) *User {
 	return &User{
 		Email:         email,

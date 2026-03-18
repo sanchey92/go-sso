@@ -179,3 +179,16 @@ func initHTTPServer(
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
 	}, uh, ah, th, ch, oh, jh, dh, loginRateLimit, corsCfg, log)
 }
+
+// tokenValidatorAdapter adapts jwt.Service to user.TokenValidator.
+type tokenValidatorAdapter struct {
+	svc *jwtadapter.Service
+}
+
+func (a *tokenValidatorAdapter) ValidateToken(token string) (string, error) {
+	claims, err := a.svc.ValidateToken(token)
+	if err != nil {
+		return "", err
+	}
+	return claims.Subject, nil
+}
