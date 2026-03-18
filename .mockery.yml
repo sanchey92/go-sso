@@ -13,6 +13,7 @@ packages:
       PasswordHasher:
       CacheStore:
       EmailSender:
+      TokenValidator:
       TokenRevoker:
   github.com/sanchey92/sso/internal/usecase/auth:
     interfaces:

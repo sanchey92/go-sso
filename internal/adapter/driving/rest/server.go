@@ -17,6 +17,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/userinfo"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 )
 
@@ -27,30 +28,30 @@ type Config struct {
 	WriteTimeout time.Duration
 }
 
+// Handlers groups all HTTP handler dependencies for the server.
+type Handlers struct {
+	User      *user.Handler
+	Auth      *auth.Handler
+	Token     *token.Handler
+	Client    *client.Handler
+	OAuth     *oauth.Handler
+	JWKS      *jwks.Handler
+	Discovery *discovery.Handler
+	UserInfo  *userinfo.Handler
+}
+
 type Server struct {
-	httpServer       *http.Server
-	router           chi.Router
-	userHandler      *user.Handler
-	authHandler      *auth.Handler
-	tokenHandler     *token.Handler
-	clientHandler    *client.Handler
-	oauthHandler     *oauth.Handler
-	jwksHandler      *jwks.Handler
-	discoveryHandler *discovery.Handler
-	loginRateLimit   func(http.Handler) http.Handler
-	corsConfig       middleware.CORSConfig
-	log              *zap.Logger
+	httpServer     *http.Server
+	router         chi.Router
+	handlers       Handlers
+	loginRateLimit func(http.Handler) http.Handler
+	corsConfig     middleware.CORSConfig
+	log            *zap.Logger
 }
 
 func NewServer(
 	cfg *Config,
-	userH *user.Handler,
-	authH *auth.Handler,
-	tokenH *token.Handler,
-	clientH *client.Handler,
-	oauthH *oauth.Handler,
-	jwksH *jwks.Handler,
-	discoverH *discovery.Handler,
+	h Handlers,
 	loginRateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
 	log *zap.Logger,
@@ -58,17 +59,11 @@ func NewServer(
 	r := chi.NewRouter()
 
 	s := &Server{
-		router:           r,
-		userHandler:      userH,
-		authHandler:      authH,
-		tokenHandler:     tokenH,
-		clientHandler:    clientH,
-		oauthHandler:     oauthH,
-		jwksHandler:      jwksH,
-		discoveryHandler: discoverH,
-		loginRateLimit:   loginRateLimit,
-		corsConfig:       corsCfg,
-		log:              log,
+		router:         r,
+		handlers:       h,
+		loginRateLimit: loginRateLimit,
+		corsConfig:     corsCfg,
+		log:            log,
 	}
 
 	s.setupMiddleware()
@@ -93,28 +88,29 @@ func (s *Server) setupMiddleware() {
 
 func (s *Server) setupRoutes() {
 	s.router.Route("/api/v1/auth", func(r chi.Router) {
-		r.Post("/register", s.userHandler.Register)
+		r.Post("/register", s.handlers.User.Register)
 
-		r.With(s.loginRateLimit).Post("/login", s.authHandler.Login)
+		r.With(s.loginRateLimit).Post("/login", s.handlers.Auth.Login)
 
-		r.Post("/token/refresh", s.tokenHandler.Refresh)
-		r.Post("/token/revoke", s.tokenHandler.Revoke)
-		r.Post("/email/verify", s.userHandler.VerifyEmail)
-		r.Post("/password/reset-request", s.userHandler.RequestPasswordReset)
-		r.Post("/password/reset", s.userHandler.ResetPassword)
+		r.Post("/token/refresh", s.handlers.Token.Refresh)
+		r.Post("/token/revoke", s.handlers.Token.Revoke)
+		r.Post("/email/verify", s.handlers.User.VerifyEmail)
+		r.Post("/password/reset-request", s.handlers.User.RequestPasswordReset)
+		r.Post("/password/reset", s.handlers.User.ResetPassword)
 	})
 
 	s.router.Route("/api/v1/oauth", func(r chi.Router) {
-		r.Get("/authorize", s.oauthHandler.Authorize)
-		r.Post("/token", s.oauthHandler.Token)
-		r.Post("/revoke", s.oauthHandler.Revoke)
-		r.Get("/clients/{id}", s.clientHandler.GetByID)
-		r.Post("/clients/", s.clientHandler.Create)
+		r.Get("/authorize", s.handlers.OAuth.Authorize)
+		r.Post("/token", s.handlers.OAuth.Token)
+		r.Post("/revoke", s.handlers.OAuth.Revoke)
+		r.Post("/userinfo", s.handlers.UserInfo.UserInfo)
+		r.Get("/clients/{id}", s.handlers.Client.GetByID)
+		r.Post("/clients/", s.handlers.Client.Create)
 	})
 
 	// OIDC Discovery + JWKS — must be at well-known paths (root level, not under /api/v1)
-	s.router.Get("/.well-known/openid-configuration", s.discoveryHandler.Discovery)
-	s.router.Get("/.well-known/jwks.json", s.jwksHandler.JWKS)
+	s.router.Get("/.well-known/openid-configuration", s.handlers.Discovery.Discovery)
+	s.router.Get("/.well-known/jwks.json", s.handlers.JWKS.JWKS)
 
 	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

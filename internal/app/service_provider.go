@@ -22,6 +22,7 @@ import (
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	userhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
+	userinfohandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/userinfo"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/internal/usecase/auth"
@@ -62,8 +63,10 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 
 	httputil.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
 
+	tokenValidator := jwtadapter.NewTokenValidator(jwtService)
 	tokenService := token.New(jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, cfg.Auth.Audience, log)
-	userService := user.New(storage, h, cache, emailSender, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
+	userService := user.New(storage, h, cache, emailSender, tokenValidator, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
+
 	authService := auth.New(storage, h, tokenService, log)
 	clientService := client.New(storage, log)
 	oauthService := oauth.New(storage, clientService, cache, tokenService, cfg.OAuth.AuthCodeTTL, log)
@@ -143,16 +146,19 @@ func initHTTPServer(
 	cache *redis.Cache,
 	log *zap.Logger,
 ) *rest.Server {
-	uh := userhandler.NewHandler(userSvc, log)
-	ah := authhandler.NewHandler(authSvc, log)
-	th := tokenhandler.NewHandler(tokenSvc, log)
-	ch := clienthandler.NewHandler(clientSvc, log)
-	oh := oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, tokenSvc, log)
-	jh := jwkshandler.NewHandler(jwksProvider, log)
-	dh := discoveryhandler.NewHandler(&discoveryhandler.Config{
-		Issuer:  cfg.Auth.Issuer,
-		BaseURL: cfg.Server.HTTP.BaseURL,
-	})
+	handlers := rest.Handlers{
+		User:   userhandler.NewHandler(userSvc, log),
+		Auth:   authhandler.NewHandler(authSvc, log),
+		Token:  tokenhandler.NewHandler(tokenSvc, log),
+		Client: clienthandler.NewHandler(clientSvc, log),
+		OAuth:  oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, tokenSvc, log),
+		JWKS:   jwkshandler.NewHandler(jwksProvider, log),
+		Discovery: discoveryhandler.NewHandler(&discoveryhandler.Config{
+			Issuer:  cfg.Auth.Issuer,
+			BaseURL: cfg.Server.HTTP.BaseURL,
+		}),
+		UserInfo: userinfohandler.NewHandler(userSvc, log),
+	}
 
 	loginRateLimit := middleware.RateLimit(
 		cache,
@@ -177,18 +183,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, uh, ah, th, ch, oh, jh, dh, loginRateLimit, corsCfg, log)
-}
-
-// tokenValidatorAdapter adapts jwt.Service to user.TokenValidator.
-type tokenValidatorAdapter struct {
-	svc *jwtadapter.Service
-}
-
-func (a *tokenValidatorAdapter) ValidateToken(token string) (string, error) {
-	claims, err := a.svc.ValidateToken(token)
-	if err != nil {
-		return "", err
-	}
-	return claims.Subject, nil
+	}, handlers, loginRateLimit, corsCfg, log)
 }

@@ -42,14 +42,18 @@ var testCORSConfig = middleware.CORSConfig{
 	MaxAge:        "86400",
 }
 
+var testHandlers = Handlers{
+	User:   &user.Handler{},
+	Auth:   &auth.Handler{},
+	Token:  &token.Handler{},
+	Client: &client.Handler{},
+	OAuth:  &oauth.Handler{},
+}
+
 func newTestServer() *Server {
 	return NewServer(
 		&Config{Host: "localhost", Port: 0},
-		&user.Handler{},
-		&auth.Handler{},
-		&token.Handler{},
-		&client.Handler{},
-		&oauth.Handler{},
+		testHandlers,
 		noopMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
@@ -115,11 +119,7 @@ func TestCORSHeaders(t *testing.T) {
 func TestLoginRateLimitApplied(t *testing.T) {
 	srv := NewServer(
 		&Config{Host: "localhost", Port: 0},
-		&user.Handler{},
-		&auth.Handler{},
-		&token.Handler{},
-		&client.Handler{},
-		&oauth.Handler{},
+		testHandlers,
 		blockingMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
@@ -139,11 +139,7 @@ func TestLoginRateLimitApplied(t *testing.T) {
 func TestLoginRateLimitNotAffectOtherRoutes(t *testing.T) {
 	srv := NewServer(
 		&Config{Host: "localhost", Port: 0},
-		&user.Handler{},
-		&auth.Handler{},
-		&token.Handler{},
-		&client.Handler{},
-		&oauth.Handler{},
+		testHandlers,
 		blockingMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
