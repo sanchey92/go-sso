@@ -397,6 +397,114 @@ func TestService_RequestPasswordReset(t *testing.T) {
 	}
 }
 
+func TestService_GetUserInfo(t *testing.T) {
+	ctx := t.Context()
+
+	tests := []struct {
+		name      string
+		token     string
+		setupMock func(tv *mocks.TokenValidator, ur *mocks.UserRepository)
+		want      *model.UserInfo
+		wantErr   string
+	}{
+		{
+			name:  "success",
+			token: "valid-access-token",
+			setupMock: func(tv *mocks.TokenValidator, ur *mocks.UserRepository) {
+				tv.EXPECT().ValidateToken("valid-access-token").Return("user-123", nil)
+				ur.EXPECT().GetByID(mock.Anything, "user-123").Return(&model.User{
+					ID:            "user-123",
+					Email:         "user@example.com",
+					EmailVerified: true,
+				}, nil)
+			},
+			want: &model.UserInfo{
+				Sub:           "user-123",
+				Email:         "user@example.com",
+				EmailVerified: true,
+			},
+		},
+		{
+			name:  "success with unverified email",
+			token: "valid-access-token",
+			setupMock: func(tv *mocks.TokenValidator, ur *mocks.UserRepository) {
+				tv.EXPECT().ValidateToken("valid-access-token").Return("user-456", nil)
+				ur.EXPECT().GetByID(mock.Anything, "user-456").Return(&model.User{
+					ID:            "user-456",
+					Email:         "new@example.com",
+					EmailVerified: false,
+				}, nil)
+			},
+			want: &model.UserInfo{
+				Sub:           "user-456",
+				Email:         "new@example.com",
+				EmailVerified: false,
+			},
+		},
+		{
+			name:  "invalid token",
+			token: "bad-token",
+			setupMock: func(tv *mocks.TokenValidator, _ *mocks.UserRepository) {
+				tv.EXPECT().ValidateToken("bad-token").
+					Return("", domainerrors.ErrInvalidToken)
+			},
+			wantErr: "validate token",
+		},
+		{
+			name:  "expired token",
+			token: "expired-token",
+			setupMock: func(tv *mocks.TokenValidator, _ *mocks.UserRepository) {
+				tv.EXPECT().ValidateToken("expired-token").
+					Return("", domainerrors.ErrTokenExpired)
+			},
+			wantErr: "validate token",
+		},
+		{
+			name:  "user not found",
+			token: "valid-access-token",
+			setupMock: func(tv *mocks.TokenValidator, ur *mocks.UserRepository) {
+				tv.EXPECT().ValidateToken("valid-access-token").Return("deleted-user", nil)
+				ur.EXPECT().GetByID(mock.Anything, "deleted-user").
+					Return(nil, domainerrors.ErrUserNotFound)
+			},
+			wantErr: "get user",
+		},
+		{
+			name:  "repository error",
+			token: "valid-access-token",
+			setupMock: func(tv *mocks.TokenValidator, ur *mocks.UserRepository) {
+				tv.EXPECT().ValidateToken("valid-access-token").Return("user-123", nil)
+				ur.EXPECT().GetByID(mock.Anything, "user-123").
+					Return(nil, errors.New("db connection lost"))
+			},
+			wantErr: "get user",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tv := mocks.NewTokenValidator(t)
+			ur := mocks.NewUserRepository(t)
+			tt.setupMock(tv, ur)
+
+			svc := New(ur, mocks.NewPasswordHasher(t), mocks.NewCacheStore(t), mocks.NewEmailSender(t), tv, mocks.NewTokenRevoker(t), 24*time.Hour, time.Hour, zap.NewNop())
+
+			info, err := svc.GetUserInfo(ctx, tt.token)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Nil(t, info)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, info)
+			assert.Equal(t, tt.want, info)
+		})
+	}
+}
+
 func TestService_ResetPassword(t *testing.T) {
 	ctx := t.Context()
 

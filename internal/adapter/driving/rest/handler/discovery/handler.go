@@ -25,6 +25,7 @@ type discoveryResponse struct {
 	ScopesSupported                   []string `json:"scopes_supported"`
 	ClaimsSupported                   []string `json:"claims_supported"`
 	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
+	UserinfoEndpoint                  string   `json:"userinfo_endpoint"`
 }
 
 type Handler struct {
@@ -47,6 +48,7 @@ func NewHandler(cfg *Config) *Handler {
 		ScopesSupported:                   []string{"openid", "profile", "email", "offline_access"},
 		ClaimsSupported:                   []string{"sub", "iss", "aud", "exp", "iat", "email", "email_verified"},
 		CodeChallengeMethodsSupported:     []string{"S256"},
+		UserinfoEndpoint:                  cfg.BaseURL + "/api/v1/oauth/userinfo",
 	}
 
 	data, err := json.Marshal(resp)

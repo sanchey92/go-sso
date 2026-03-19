@@ -35,7 +35,7 @@ func NewHandler(svc InfoProvider, log *zap.Logger) *Handler {
 func (h *Handler) UserInfo(w http.ResponseWriter, r *http.Request) {
 	token := extractBearerToken(r)
 	if token == "" {
-		w.Header().Set("WWW-Authenticate", `"Bearer realm=sso"`)
+		w.Header().Set("WWW-Authenticate", `Bearer realm="sso"`)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}

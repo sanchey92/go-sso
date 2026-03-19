@@ -124,10 +124,12 @@ func TestService_GetJWKS(t *testing.T) {
 
 	jwks := svc.GetJWKS()
 
+	key := jwks.Keys[0]
 	require.Len(t, jwks.Keys, 1)
 	assert.Equal(t, "OKP", jwks.Keys[0].KTY)
 	assert.Equal(t, "Ed25519", jwks.Keys[0].CRV)
 	assert.Equal(t, "sig", jwks.Keys[0].Use)
+	assert.Equal(t, "EdDSA", key.Alg)
 	assert.Equal(t, svc.currentKey.KID, jwks.Keys[0].KID)
 	assert.NotEmpty(t, jwks.Keys[0].X)
 }

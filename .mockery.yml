@@ -40,6 +40,9 @@ packages:
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user:
     interfaces:
       UserService:
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/userinfo:
+    interfaces:
+      InfoProvider:
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token:
     interfaces:
       TokenService:

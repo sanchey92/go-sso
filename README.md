@@ -83,9 +83,11 @@ POST   /api/v1/auth/password/reset         200  Сброс пароля по т�
 GET    /api/v1/oauth/authorize             302  OAuth 2.0 Authorization Code + PKCE
 POST   /api/v1/oauth/token                200  Token endpoint (code exchange, refresh grant)
 POST   /api/v1/oauth/revoke               200  Token revocation (RFC 7009, always 200)
+POST   /api/v1/oauth/userinfo              200  UserInfo (Bearer token → sub, email, email_verified)
 POST   /api/v1/oauth/clients/              201  Регистрация OAuth-клиента → client_id + client_secret
 GET    /api/v1/oauth/clients/{id}          200  Получение OAuth-клиента (без secret)
 GET    /.well-known/openid-configuration   200  OIDC Discovery (issuer, endpoints, scopes)
+GET    /.well-known/jwks.json              200  JWKS (EdDSA public keys, key rotation)
 GET    /healthz                            200  Health check
 ```
 
@@ -95,7 +97,7 @@ GET    /healthz                            200  Health check
 
 22 из 22 задач выполнены. Unit-тесты (покрытие usecase/auth 100%, token 95.9%, user 92.5%) + интеграционные тесты (testcontainers: PostgreSQL + Redis, 15 тестов).
 
-## Phase 2: OAuth 2.0 + OIDC — In Progress
+## Phase 2: OAuth 2.0 + OIDC — Almost Done
 
 Превращение сервиса в полноценный OAuth 2.0 Authorization Server с OIDC.
 
@@ -105,16 +107,17 @@ GET    /healthz                            200  Health check
 | TASK-024 | Authorization Code + PKCE (`/oauth/authorize`) | done |
 | TASK-025 | Token endpoint (code exchange, PKCE verify, refresh grant) | done |
 | TASK-026 | Token revocation (RFC 7009) + OIDC Discovery (`/.well-known/openid-configuration`) | done |
-| TASK-027 | JWKS endpoint (`/.well-known/jwks.json`) + UserInfo | planned |
+| TASK-027 | JWKS endpoint (`/.well-known/jwks.json`) + UserInfo (`/oauth/userinfo`) | done |
 | TASK-028 | E2E-тесты полного OAuth flow | planned |
 
-**Что это даст:**
-- Любое приложение сможет интегрироваться через стандартный OAuth 2.0 / OIDC
+**Что реализовано:**
+- Любое приложение может интегрироваться через стандартный OAuth 2.0 / OIDC
 - PKCE (S256) обязателен — защита от authorization code interception
 - Authorization code одноразовый (TTL 60s, Redis)
 - OIDC Discovery — автоматическая конфигурация для клиентов (issuer, endpoints, scopes, grant_types)
 - Token revocation (RFC 7009) — безопасный отзыв refresh tokens
-- JWKS — публичные ключи для верификации JWT без обращения к серверу
+- JWKS — публичные ключи EdDSA для верификации JWT без обращения к серверу, key rotation
+- UserInfo — Bearer token → claims (sub, email, email_verified), RFC 6750 WWW-Authenticate headers
 
 ## Phases 3-6: Roadmap
 
@@ -163,11 +166,11 @@ task proto-gen
 │   │   └── service_provider.go  newServiceProvider, all init* functions
 │   ├── config/               cleanenv config structs
 │   ├── domain/
-│   │   ├── model/            User, RefreshToken, OAuthClient, AuthorizationCode, TokenPair
+│   │   ├── model/            User, RefreshToken, OAuthClient, AuthorizationCode, TokenPair, UserInfo
 │   │   └── errors/           sentinel errors (13 types)
 │   ├── usecase/
 │   │   ├── auth/             Login + interfaces
-│   │   ├── user/             Register, VerifyEmail, ResetPassword + interfaces
+│   │   ├── user/             Register, VerifyEmail, ResetPassword, GetUserInfo + interfaces
 │   │   ├── token/            IssueTokenPair, RefreshTokens, RevokeToken + interfaces
 │   │   ├── client/           Create, GetByID, VerifySecret (OAuth clients) + interfaces
 │   │   └── oauth/            Authorize, ExchangeCode (OAuth 2.0 + PKCE) + interfaces
@@ -182,12 +185,14 @@ task proto-gen
 │       │       │   ├── token/       Refresh, Revoke handlers
 │       │       │   ├── client/      OAuth client CRUD handlers
 │       │       │   ├── oauth/       Authorize, Token, Revoke (RFC 7009) handlers
-│       │       │   └── discovery/   OIDC Discovery (/.well-known/openid-configuration)
+│       │       │   ├── discovery/   OIDC Discovery (/.well-known/openid-configuration)
+│       │       │   ├── jwks/        JWKS (/.well-known/jwks.json, EdDSA public keys)
+│       │       │   └── userinfo/    UserInfo (/oauth/userinfo, Bearer token → claims)
 │       │       └── middleware/      RequestID, Recovery, Logging, CORS, RateLimit
 │       └── driven/
 │           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo, OAuthClientRepo
 │           ├── redis/        cache (Set/Get/Delete), rate limiter (Allow)
-│           ├── jwt/          EdDSA token generator
+│           ├── jwt/          EdDSA token generator, JWKS, TokenValidator, key rotation
 │           ├── hasher/       Argon2id
 │           └── email/        log sender (stub)
 ├── test/
