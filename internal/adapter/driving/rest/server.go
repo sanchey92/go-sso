@@ -134,3 +134,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (s *Server) Handler() http.Handler {
+	return s.router
+}
