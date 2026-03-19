@@ -97,7 +97,7 @@ GET    /healthz                            200  Health check
 
 22 из 22 задач выполнены. Unit-тесты (покрытие usecase/auth 100%, token 95.9%, user 92.5%) + интеграционные тесты (testcontainers: PostgreSQL + Redis, 15 тестов).
 
-## Phase 2: OAuth 2.0 + OIDC — Almost Done
+## Phase 2: OAuth 2.0 + OIDC — Done
 
 Превращение сервиса в полноценный OAuth 2.0 Authorization Server с OIDC.
 
@@ -108,7 +108,9 @@ GET    /healthz                            200  Health check
 | TASK-025 | Token endpoint (code exchange, PKCE verify, refresh grant) | done |
 | TASK-026 | Token revocation (RFC 7009) + OIDC Discovery (`/.well-known/openid-configuration`) | done |
 | TASK-027 | JWKS endpoint (`/.well-known/jwks.json`) + UserInfo (`/oauth/userinfo`) | done |
-| TASK-028 | E2E-тесты полного OAuth flow | planned |
+| TASK-028 | E2E-тесты полного OAuth flow (18 тестов, testcontainers) | done |
+
+6 из 6 задач выполнены. E2E-тесты покрывают полный flow: Register → Verify Email → Login → OAuth Authorize (PKCE S256) → Token Exchange → UserInfo → Refresh (rotation) → Revoke. Error cases: replay detection, code reuse, wrong PKCE, RFC 7009 compliance.
 
 **Что реализовано:**
 - Любое приложение может интегрироваться через стандартный OAuth 2.0 / OIDC
@@ -142,6 +144,7 @@ task run
 task test                  # unit tests
 task test:cover            # unit tests + coverage report in browser
 task test:integration      # integration tests (requires Docker)
+task test:e2e              # e2e tests — full OAuth 2.0 flow (requires Docker)
 task lint
 
 # Migrations
@@ -196,6 +199,7 @@ task proto-gen
 │           ├── hasher/       Argon2id
 │           └── email/        log sender (stub)
 ├── test/
+│   ├── e2e/                  E2E tests (testcontainers, //go:build e2e, full OAuth flow)
 │   └── integration/          integration tests (testcontainers, //go:build integration)
 │       ├── postgres/          UserRepo, RefreshTokenRepo, OAuthClientRepo
 │       └── redis/             CacheStore (Set/Get/Delete/TTL)

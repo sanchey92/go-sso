@@ -54,6 +54,12 @@ tasks:
       - go clean -testcache
       - go test ./... -v -race -count=1 -tags=integration
 
+  test:e2e:
+    desc: run e2e tests
+    cmds:
+      - go clean -testcache
+      - go test ./test/e2e/... -v -race -count=1 -tags=e2e
+
   format:
     desc: "format gofumpt + gci"
     silent: true
