@@ -121,11 +121,23 @@ GET    /healthz                            200  Health check
 - JWKS — публичные ключи EdDSA для верификации JWT без обращения к серверу, key rotation
 - UserInfo — Bearer token → claims (sub, email, email_verified), RFC 6750 WWW-Authenticate headers
 
-## Phases 3-6: Roadmap
+## Phase 3: Federation — In Progress
+
+Identity Federation: внешние провайдеры (Google, GitHub), auto-provisioning, account linking.
+
+| Task | Description | Status |
+|------|------------|--------|
+| TASK-029 | Миграция `federated_identities` (user_id FK, provider, UNIQUE constraint) | done |
+| TASK-030 | Интерфейсы федерации + Federation service | — |
+| TASK-031 | Google OAuth адаптер | — |
+| TASK-032 | GitHub OAuth адаптер | — |
+| TASK-033 | REST-эндпоинты федерации | — |
+| TASK-034 | Account linking (привязка провайдеров к существующему аккаунту) | — |
+
+## Phases 4-6: Roadmap
 
 | Phase | Focus | Key Features |
 |-------|-------|-------------|
-| **3. Federation** | Identity Federation | Google OAuth, GitHub OAuth, auto-provisioning, account linking |
 | **4. MFA + Passwordless** | Multi-Factor Auth | TOTP (authenticator apps), recovery codes, magic links |
 | **5. gRPC + Observability** | Internal API + Monitoring | gRPC server (IntrospectToken, ValidateToken), Prometheus, OpenTelemetry, health checks |
 | **6. Hardening** | Production readiness | Full docker-compose env, security audit, OpenAPI 3.0 spec, CI/CD (GitHub Actions) |
