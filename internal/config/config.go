@@ -83,8 +83,9 @@ type OAuthProviderConfig struct {
 }
 
 type FederationConfig struct {
-	Google OAuthProviderConfig `yaml:"google" env-prefix:"SSO_FEDERATION_GOOGLE_"`
-	GitHub OAuthProviderConfig `yaml:"github" env-prefix:"SSO_FEDERATION_GITHUB_"`
+	Google   OAuthProviderConfig `yaml:"google" env-prefix:"SSO_FEDERATION_GOOGLE_"`
+	GitHub   OAuthProviderConfig `yaml:"github" env-prefix:"SSO_FEDERATION_GITHUB_"`
+	StateTTL time.Duration       `yaml:"state_ttl" env:"SSO_FEDERATION_STATE_TTL" env-default:"10m"`
 }
 
 type TOTPConfig struct {

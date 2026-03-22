@@ -42,14 +42,15 @@ oauth:
   auth_code_ttl: 60s
 
 federation:
+  state_ttl: 10m
   google:
-    client_id: "google-client-id-stub" # override via .env SSO_FEDERATION_GOOGLE_CLIENT_ID
-    client_secret: "google-client-secret-stub" # override via .env SSO_FEDERATION_GOOGLE_CLIENT_SECRET
-    redirect_url: "http://localhost:8080/api/v1/auth/federation/google/callback" # override via .env SSO_FEDERATION_GOOGLE_REDIRECT_URL
+    client_id: "test-google-client-id"
+    client_secret: "test-google-client-secret"
+    redirect_url: "http://localhost:8080/api/v1/auth/google/callback"
   github:
-    client_id: "github-client-id-stub" # override via .env SSO_FEDERATION_GITHUB_CLIENT_ID
-    client_secret: "github-client-secret-stub" # override via .env SSO_FEDERATION_GITHUB_CLIENT_SECRET
-    redirect_url: "http://localhost:8080/api/v1/auth/federation/github/callback" # override via .env SSO_FEDERATION_GITHUB_REDIRECT_URL
+    client_id: "test-github-client-id"
+    client_secret: "test-github-client-secret"
+    redirect_url: "http://localhost:8080/api/v1/auth/github/callback"
 
 mfa:
   totp:

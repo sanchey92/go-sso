@@ -47,14 +47,15 @@ oauth:
   auth_code_ttl: 60s
 
 federation:
+  state_ttl: 10m
   google:
-    client_id: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GOOGLE_CLIENT_ID
-    client_secret: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GOOGLE_CLIENT_SECRET
-    redirect_url: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GOOGLE_REDIRECT_URL
+    client_id: "MUST_BE_SET_VIA_ENV"
+    client_secret: "MUST_BE_SET_VIA_ENV"
+    redirect_url: "MUST_BE_SET_VIA_ENV"
   github:
-    client_id: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GITHUB_CLIENT_ID
-    client_secret: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GITHUB_CLIENT_SECRET
-    redirect_url: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_FEDERATION_GITHUB_REDIRECT_URL
+    client_id: "MUST_BE_SET_VIA_ENV"
+    client_secret: "MUST_BE_SET_VIA_ENV"
+    redirect_url: "MUST_BE_SET_VIA_ENV"
 
 mfa:
   totp:
