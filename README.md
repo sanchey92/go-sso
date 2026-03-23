@@ -24,6 +24,7 @@ internal/
     token/            IssueTokenPair, RefreshTokens, RevokeToken
     client/           Create, GetByID, VerifySecret (OAuth clients)
     oauth/            Authorize, ExchangeCode, RefreshTokens (OAuth 2.0 + PKCE)
+    federation/       InitiateOAuth, HandleCallback (Google, GitHub)
   adapter/
     driving/          входящие: REST (chi), gRPC
     driven/           исходящие: PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, Email
@@ -128,11 +129,19 @@ Identity Federation: внешние провайдеры (Google, GitHub), auto-
 | Task | Description | Status |
 |------|------------|--------|
 | TASK-029 | Миграция `federated_identities` (user_id FK, provider, UNIQUE constraint) | done |
-| TASK-030 | Интерфейсы федерации + Federation service | — |
-| TASK-031 | Google OAuth адаптер | — |
-| TASK-032 | GitHub OAuth адаптер | — |
-| TASK-033 | REST-эндпоинты федерации | — |
-| TASK-034 | Account linking (привязка провайдеров к существующему аккаунту) | — |
+| TASK-030 | Интерфейсы федерации + Federation service (InitiateOAuth, HandleCallback) | done |
+| TASK-031 | Google OAuth адаптер (IdentityProvider: GetAuthURL, ExchangeCode) | — |
+| TASK-032 | GitHub OAuth адаптер (IdentityProvider: GetAuthURL, ExchangeCode) | — |
+| TASK-033 | Auto-provisioning + account linking (транзакционный LinkIdentityTx) | done |
+| TASK-034 | REST-хендлеры федерации (handler готов, подключение в routes pending) | — |
+| TASK-035 | Тесты federation flows | — |
+
+**Что уже реализовано:**
+- Federation usecase: `InitiateOAuth` (state + PKCE verifier → Redis, TTL 10 мин) и `HandleCallback` (validate state → exchange code → link identity → issue tokens)
+- PostgreSQL: транзакционный `LinkIdentityTx` — auto-provisioning (user без пароля, email_verified=true) + account linking по email + повторный вход
+- REST handler: `Authorize` (302 redirect), `Callback` (JSON tokens) — написан и протестирован, но ещё не подключен в роуты
+- Интеграционные тесты: 7 тестов (auto-provision, repeat login, account linking, two providers same email, cascade delete)
+- 5 новых domain errors: `ErrFederatedIdentityNotFound`, `ErrIdentityAlreadyLinked`, `ErrProviderNotSupported`, `ErrInvalidOAuthState`, `ErrProviderEmailNotVerified`
 
 ## Phases 4-6: Roadmap
 
@@ -181,14 +190,15 @@ task proto-gen
 │   │   └── service_provider.go  newServiceProvider, all init* functions
 │   ├── config/               cleanenv config structs
 │   ├── domain/
-│   │   ├── model/            User, RefreshToken, OAuthClient, AuthorizationCode, TokenPair, UserInfo
-│   │   └── errors/           sentinel errors (13 types)
+│   │   ├── model/            User, RefreshToken, OAuthClient, AuthorizationCode, TokenPair, UserInfo, FederatedIdentity, ProviderUser
+│   │   └── errors/           sentinel errors (16 types)
 │   ├── usecase/
 │   │   ├── auth/             Login + interfaces
 │   │   ├── user/             Register, VerifyEmail, ResetPassword, GetUserInfo + interfaces
 │   │   ├── token/            IssueTokenPair, RefreshTokens, RevokeToken + interfaces
 │   │   ├── client/           Create, GetByID, VerifySecret (OAuth clients) + interfaces
-│   │   └── oauth/            Authorize, ExchangeCode (OAuth 2.0 + PKCE) + interfaces
+│   │   ├── oauth/            Authorize, ExchangeCode (OAuth 2.0 + PKCE) + interfaces
+│   │   └── federation/       InitiateOAuth, HandleCallback (identity federation) + interfaces
 │   └── adapter/
 │       ├── driving/
 │       │   └── rest/         HTTP server (chi), handlers, middleware
@@ -202,10 +212,11 @@ task proto-gen
 │       │       │   ├── oauth/       Authorize, Token, Revoke (RFC 7009) handlers
 │       │       │   ├── discovery/   OIDC Discovery (/.well-known/openid-configuration)
 │       │       │   ├── jwks/        JWKS (/.well-known/jwks.json, EdDSA public keys)
-│       │       │   └── userinfo/    UserInfo (/oauth/userinfo, Bearer token → claims)
+│       │       │   ├── userinfo/    UserInfo (/oauth/userinfo, Bearer token → claims)
+│       │       │   └── federation/ Authorize (302 redirect), Callback (JSON tokens)
 │       │       └── middleware/      RequestID, Recovery, Logging, CORS, RateLimit
 │       └── driven/
-│           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo, OAuthClientRepo
+│           ├── postgres/     pgx pool, UserRepo, RefreshTokenRepo, OAuthClientRepo, FederatedIdentityRepo
 │           ├── redis/        cache (Set/Get/Delete), rate limiter (Allow)
 │           ├── jwt/          EdDSA token generator, JWKS, TokenValidator, key rotation
 │           ├── hasher/       Argon2id
@@ -213,7 +224,7 @@ task proto-gen
 ├── test/
 │   ├── e2e/                  E2E tests (testcontainers, //go:build e2e, full OAuth flow)
 │   └── integration/          integration tests (testcontainers, //go:build integration)
-│       ├── postgres/          UserRepo, RefreshTokenRepo, OAuthClientRepo
+│       ├── postgres/          UserRepo, RefreshTokenRepo, OAuthClientRepo, FederatedIdentityRepo
 │       └── redis/             CacheStore (Set/Get/Delete/TTL)
 ├── migrations/               SQL (goose)
 ├── pkg/
