@@ -34,46 +34,26 @@ func (s *Storage) Create(ctx context.Context, user *model.User) error {
 }
 
 func (s *Storage) GetByEmail(ctx context.Context, email string) (*model.User, error) {
-	query := `SELECT id, email, password_hash, email_verified, mfa_enabled, 
-              mfa_secret_enc, status, created_at, updated_at
-              FROM users
-              WHERE email = $1`
-
-	var user model.User
-	var status string
-
-	err := s.pool.QueryRow(ctx, query, email).Scan(
-		&user.ID,
-		&user.Email,
-		&user.PasswordHash,
-		&user.EmailVerified,
-		&user.MFAEnabled,
-		&user.MFASecretEnc,
-		&status,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domainerrors.ErrUserNotFound
-		}
-		return nil, fmt.Errorf("select user by email: %w", err)
-	}
-
-	user.Status = model.UserStatus(status)
-	return &user, nil
+	return scanUser(s.pool.QueryRow(ctx,
+		`SELECT id, email, password_hash, email_verified, mfa_enabled,
+		        mfa_secret_enc, status, created_at, updated_at
+		 FROM users WHERE email = $1`, email,
+	))
 }
 
 func (s *Storage) GetByID(ctx context.Context, id string) (*model.User, error) {
-	query := `SELECT id, email, password_hash, email_verified, mfa_enabled,
-              mfa_secret_enc, status, created_at, updated_at
-              FROM users
-              WHERE id = $1`
+	return scanUser(s.pool.QueryRow(ctx,
+		`SELECT id, email, password_hash, email_verified, mfa_enabled,
+		        mfa_secret_enc, status, created_at, updated_at
+		 FROM users WHERE id = $1`, id,
+	))
+}
 
+func scanUser(row pgx.Row) (*model.User, error) {
 	var user model.User
 	var status string
 
-	err := s.pool.QueryRow(ctx, query, id).Scan(
+	err := row.Scan(
 		&user.ID,
 		&user.Email,
 		&user.PasswordHash,
@@ -88,8 +68,9 @@ func (s *Storage) GetByID(ctx context.Context, id string) (*model.User, error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domainerrors.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("select user by id: %w", err)
+		return nil, fmt.Errorf("scan user: %w", err)
 	}
+
 	user.Status = model.UserStatus(status)
 	return &user, nil
 }
