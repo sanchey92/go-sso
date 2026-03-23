@@ -15,11 +15,13 @@ packages:
       EmailSender:
       TokenValidator:
       TokenRevoker:
+
   github.com/sanchey92/sso/internal/usecase/auth:
     interfaces:
       UserGetter:
       PasswordVerifier:
       TokenIssuer:
+
   github.com/sanchey92/sso/internal/usecase/oauth:
     interfaces:
       ClientGetter:
@@ -27,31 +29,51 @@ packages:
       AuthCodeStore:
       TokenIssuer:
       TokenRefresher:
+
   github.com/sanchey92/sso/internal/usecase/token:
     interfaces:
       TokenGenerator:
       RefreshTokenRepository:
+
   github.com/sanchey92/sso/internal/usecase/client:
     interfaces:
       OAuthRepository:
+
+  github.com/sanchey92/sso/internal/usecase/federation:
+    interfaces:
+      IdentityProvider:
+      UserLinker:
+      TokenIssuer:
+      StateStore:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth:
     interfaces:
       AuthService:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user:
     interfaces:
       UserService:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/userinfo:
     interfaces:
       InfoProvider:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token:
     interfaces:
       TokenService:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client:
     interfaces:
       OAuthService:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth:
     interfaces:
       OAuthorizer:
       Exchanger:
       Refresher:
       Revoker:
+
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation:
+    interfaces:
+      Initiator:
+      CallbackHandler:
