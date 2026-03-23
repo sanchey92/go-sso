@@ -72,7 +72,7 @@ func New(
 	}
 }
 
-func (s *Service) InitiateOAUth(ctx context.Context, provider string) (string, error) {
+func (s *Service) InitiateOAuth(ctx context.Context, provider string) (string, error) {
 	p, ok := s.providers[provider]
 	if !ok {
 		return "", domainerrors.ErrProviderNotSupported
