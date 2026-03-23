@@ -45,6 +45,10 @@ func New(ctx context.Context, cfg *Config, log *zap.Logger) (*Storage, error) {
 	}, nil
 }
 
+func (s *Storage) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
 func (s *Storage) Close() {
 	s.pool.Close()
 }
