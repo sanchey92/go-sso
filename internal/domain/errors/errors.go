@@ -17,6 +17,7 @@ var (
 	ErrInvalidRedirectURI        = errors.New("invalid redirect uri")
 	ErrInvalidAuthorizationCode  = errors.New("invalid authorization code")
 	ErrFederatedIdentityNotFound = errors.New("federated identity not found")
+	ErrIdentityAlreadyLinked     = errors.New("identity already linked to a user")
 	ErrProviderNotSupported      = errors.New("identity provider not supported")
 	ErrInvalidOAuthState         = errors.New("invalid or expired OAuth state")
 	ErrProviderEmailNotVerified  = errors.New("provider email is not verified")
