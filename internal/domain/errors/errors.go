@@ -21,4 +21,12 @@ var (
 	ErrProviderNotSupported      = errors.New("identity provider not supported")
 	ErrInvalidOAuthState         = errors.New("invalid or expired OAuth state")
 	ErrProviderEmailNotVerified  = errors.New("provider email is not verified")
+
+	ErrMFANotEnabled        = errors.New("mfa not enabled")
+	ErrMFAAlreadyEnabled    = errors.New("mfa already enabled")
+	ErrInvalidTOTPCode      = errors.New("invalid totp code")
+	ErrInvalidMFAToken      = errors.New("invalid or expired mfa token")
+	ErrRecoveryCodeNotFound = errors.New("recovery code not found")
+	ErrRecoveryCodeUsed     = errors.New("recovery code already used")
+	ErrMagicLinkNotFound    = errors.New("magic link not found or expired")
 )
