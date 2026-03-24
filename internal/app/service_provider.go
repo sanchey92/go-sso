@@ -12,11 +12,13 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
 	jwtadapter "github.com/sanchey92/sso/internal/adapter/driven/jwt"
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
+	"github.com/sanchey92/sso/internal/adapter/driven/provider"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
+	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
@@ -27,6 +29,7 @@ import (
 	"github.com/sanchey92/sso/internal/config"
 	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/internal/usecase/client"
+	"github.com/sanchey92/sso/internal/usecase/federation"
 	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
@@ -71,11 +74,20 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	clientService := client.New(storage, log)
 	oauthService := oauth.New(storage, clientService, cache, tokenService, cfg.OAuth.AuthCodeTTL, log)
 
+	providers := map[string]federation.IdentityProvider{
+		"google": provider.NewGoogleProvider(
+			cfg.Federation.Google.ClientID,
+			cfg.Federation.Google.ClientSecret,
+			cfg.Federation.Google.RedirectURL,
+		),
+	}
+	federationService := federation.New(providers, storage, tokenService, cache, cfg.Federation.StateTTL, log)
+
 	jwksProvider := func() ([]byte, error) {
 		return json.Marshal(jwtService.GetJWKS())
 	}
 
-	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, jwksProvider, cache, log)
+	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, federationService, jwksProvider, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -142,6 +154,7 @@ func initHTTPServer(
 	tokenSvc *token.Service,
 	clientSvc *client.Service,
 	oauthSvc *oauth.Service,
+	federationSvc *federation.Service,
 	jwksProvider func() ([]byte, error),
 	cache *redis.Cache,
 	log *zap.Logger,
@@ -157,7 +170,8 @@ func initHTTPServer(
 			Issuer:  cfg.Auth.Issuer,
 			BaseURL: cfg.Server.HTTP.BaseURL,
 		}),
-		UserInfo: userinfohandler.NewHandler(userSvc, log),
+		UserInfo:   userinfohandler.NewHandler(userSvc, log),
+		Federation: federationhandler.NewHandler(federationSvc, federationSvc, log),
 	}
 
 	loginRateLimit := middleware.RateLimit(

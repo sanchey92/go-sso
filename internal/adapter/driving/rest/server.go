@@ -13,6 +13,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
@@ -30,14 +31,15 @@ type Config struct {
 
 // Handlers groups all HTTP handler dependencies for the server.
 type Handlers struct {
-	User      *user.Handler
-	Auth      *auth.Handler
-	Token     *token.Handler
-	Client    *client.Handler
-	OAuth     *oauth.Handler
-	JWKS      *jwks.Handler
-	Discovery *discovery.Handler
-	UserInfo  *userinfo.Handler
+	User       *user.Handler
+	Auth       *auth.Handler
+	Token      *token.Handler
+	Client     *client.Handler
+	OAuth      *oauth.Handler
+	JWKS       *jwks.Handler
+	Discovery  *discovery.Handler
+	UserInfo   *userinfo.Handler
+	Federation *federation.Handler
 }
 
 type Server struct {
@@ -106,6 +108,11 @@ func (s *Server) setupRoutes() {
 		r.Post("/userinfo", s.handlers.UserInfo.UserInfo)
 		r.Get("/clients/{id}", s.handlers.Client.GetByID)
 		r.Post("/clients/", s.handlers.Client.Create)
+	})
+
+	s.router.Route("/api/v1/federation/{provider}", func(r chi.Router) {
+		r.Get("/authorize", s.handlers.Federation.Authorize)
+		r.Get("/callback", s.handlers.Federation.Callback)
 	})
 
 	// OIDC Discovery + JWKS — must be at well-known paths (root level, not under /api/v1)
