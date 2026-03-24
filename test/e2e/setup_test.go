@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,16 +21,19 @@ import (
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/zap"
+	"golang.org/x/oauth2"
 
 	"github.com/sanchey92/sso/internal/adapter/driven/email"
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
 	jwtadapter "github.com/sanchey92/sso/internal/adapter/driven/jwt"
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
+	"github.com/sanchey92/sso/internal/adapter/driven/provider"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
+	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
@@ -39,6 +43,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/internal/usecase/client"
+	"github.com/sanchey92/sso/internal/usecase/federation"
 	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
@@ -65,6 +70,17 @@ var testDeps struct {
 	cache   *redis.Cache
 }
 
+// Mock OAuth provider servers for federation E2E tests.
+var (
+	mockTokenSrv    *httptest.Server
+	mockUserInfoSrv *httptest.Server
+)
+
+var mockGoogleUser struct {
+	mu   sync.Mutex
+	info map[string]any
+}
+
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
@@ -83,22 +99,27 @@ func TestMain(m *testing.M) {
 	redisContainer = redisCtr
 	testRedisAddr = redisAddr
 
-	// 5. Wiring + httptest.NewServer
+	// 5. Mock OAuth providers for federation
+	mockTokenSrv, mockUserInfoSrv = mustSetupMockProviders()
+
+	// 6. Wiring + httptest.NewServer
 	ts = mustSetupServer(pgConnStr, redisAddr)
 	baseURL = ts.URL
 
-	// 6. HTTP-клиент (НЕ следует за редиректами — важно для OAuth!)
+	// 7. HTTP-клиент (НЕ следует за редиректами — важно для OAuth!)
 	httpClient = &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 
-	// 7. Запуск тестов
+	// 8. Запуск тестов
 	code := m.Run()
 
-	// 8. Cleanup
+	// 9. Cleanup
 	ts.Close()
+	mockTokenSrv.Close()
+	mockUserInfoSrv.Close()
 	_ = pgCtr.Terminate(ctx)
 	_ = redisCtr.Terminate(ctx)
 
@@ -242,6 +263,24 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 	clientService := client.New(storage, log)
 	oauthService := oauth.New(storage, clientService, cache, tokenService, 60*time.Second, log)
 
+	// --- Federation ---
+
+	googleProvider := provider.NewGoogleProvider(
+		"test-google-id", "test-google-secret", "http://localhost/callback",
+		provider.WithEndpoint(oauth2.Endpoint{
+			AuthURL:   "https://accounts.google.com/o/oauth2/auth",
+			TokenURL:  mockTokenSrv.URL,
+			AuthStyle: oauth2.AuthStyleInParams,
+		}),
+		provider.WithUserInfoURL(mockUserInfoSrv.URL),
+	)
+
+	providers := map[string]federation.IdentityProvider{
+		"google": googleProvider,
+	}
+
+	federationService := federation.New(providers, storage, tokenService, cache, 10*time.Minute, log)
+
 	jwksProvider := func() ([]byte, error) {
 		return json.Marshal(jwtService.GetJWKS())
 	}
@@ -259,7 +298,8 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 			Issuer:  "test-sso",
 			BaseURL: "TEST_BASE_URL", // будет заменён после создания httptest.Server
 		}),
-		UserInfo: userinfohandler.NewHandler(userService, log),
+		UserInfo:   userinfohandler.NewHandler(userService, log),
+		Federation: federationhandler.NewHandler(federationService, federationService, log),
 	}
 
 	// Rate limiter: в E2E-тестах используем noop (не блокируем)
@@ -286,4 +326,31 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 
 	// httptest.NewServer использует Handler() — именно для этого мы его добавили
 	return httptest.NewServer(srv.Handler())
+}
+
+func mustSetupMockProviders() (tokenSrv, userInfoSrv *httptest.Server) {
+	tokenSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "mock-google-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+
+	userInfoSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mockGoogleUser.mu.Lock()
+		info := mockGoogleUser.info
+		mockGoogleUser.mu.Unlock()
+
+		if info == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(info)
+	}))
+
+	return tokenSrv, userInfoSrv
 }

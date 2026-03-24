@@ -167,6 +167,65 @@ func createOAuthClient(t *testing.T, redirectURI string) (clientID, clientSecret
 	return result["client_id"], result["client_secret"]
 }
 
+func setMockGoogleUser(sub, email, name, picture string, verified bool) {
+	mockGoogleUser.mu.Lock()
+	defer mockGoogleUser.mu.Unlock()
+	mockGoogleUser.info = map[string]any{
+		"sub":            sub,
+		"email":          email,
+		"email_verified": verified,
+		"name":           name,
+		"picture":        picture,
+	}
+}
+
+func federationAuthorize(t *testing.T, providerName string) string {
+	t.Helper()
+
+	resp, err := httpClient.Get(baseURL + "/api/v1/federation/" + providerName + "/authorize")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+
+	location := resp.Header.Get("Location")
+	require.NotEmpty(t, location)
+
+	u, err := url.Parse(location)
+	require.NoError(t, err)
+
+	state := u.Query().Get("state")
+	require.NotEmpty(t, state, "state must be present in redirect URL")
+
+	return state
+}
+
+func federationCallback(t *testing.T, providerName, code, state string) (accessToken, refreshToken string) {
+	t.Helper()
+
+	resp := getWithQuery(t, "/api/v1/federation/"+providerName+"/callback", url.Values{
+		"code":  {code},
+		"state": {state},
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	result := decodeJSON[map[string]any](t, resp)
+	return result["access_token"].(string), result["refresh_token"].(string)
+}
+
+func getUserInfo(t *testing.T, accessToken string) map[string]any {
+	t.Helper()
+
+	req, err := http.NewRequest("POST", baseURL+"/api/v1/oauth/userinfo", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	return decodeJSON[map[string]any](t, resp)
+}
+
 func generatePKCE(t *testing.T) (verifier, challenge string) {
 	t.Helper()
 
