@@ -80,6 +80,11 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 			cfg.Federation.Google.ClientSecret,
 			cfg.Federation.Google.RedirectURL,
 		),
+		"github": provider.NewGitHubProvider(
+			cfg.Federation.GitHub.ClientID,
+			cfg.Federation.GitHub.ClientSecret,
+			cfg.Federation.GitHub.RedirectURL,
+		),
 	}
 	federationService := federation.New(providers, storage, tokenService, cache, cfg.Federation.StateTTL, log)
 
