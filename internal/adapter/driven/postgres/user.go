@@ -104,3 +104,18 @@ func (s *Storage) UpdatePassword(ctx context.Context, userID, passwordHash strin
 	}
 	return nil
 }
+
+func (s *Storage) UpdateMFA(ctx context.Context, userID string, mfaEnabled bool, mfaSecretEnc []byte) error {
+	query := `UPDATE users
+              SET mfa_enabled = $1, mfa_secret_enc = $2, updated_at = now()
+              WHERE id = $3`
+
+	result, err := s.pool.Exec(ctx, query, mfaEnabled, mfaSecretEnc, userID)
+	if err != nil {
+		return fmt.Errorf("update mfa: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return domainerrors.ErrUserNotFound
+	}
+	return nil
+}

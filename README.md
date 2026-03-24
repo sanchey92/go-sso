@@ -2,7 +2,7 @@
 
 Production-ready Single Sign-On сервис на Go — полноценный Identity Provider с нуля.
 
-OAuth 2.0 / OIDC, MFA (TOTP + recovery codes), passwordless (magic links), федерация (Google, GitHub).
+OAuth 2.0 / OIDC, MFA (TOTP + recovery codes), passwordless (magic links), Federation (Google, GitHub).
 REST API (public) + gRPC API (internal). Без фронтенда — чистый бэкенд.
 
 ## Why
@@ -20,7 +20,7 @@ internal/
   config/             cleanenv (YAML + env override)
   domain/
     model/            бизнес-сущности (zero dependencies)
-    errors/           sentinel errors (16 типов)
+    errors/           sentinel errors (24 типа)
   usecase/            use cases + port interfaces (рядом с потребителем)
     auth/             Login
     user/             Register, VerifyEmail, ResetPassword, GetUserInfo
@@ -30,9 +30,9 @@ internal/
     federation/       InitiateOAuth, HandleCallback (Google, GitHub)
   adapter/
     driving/rest/     HTTP server (chi), handler sub-packages, middleware
-    driven/           PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, Email, OAuth providers
+    driven/           PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, AES-256-GCM, Email, OAuth providers
 pkg/
-  crypto/             token generation, SHA-256 hashing, PKCE
+  crypto/             token generation, SHA-256 hashing, PKCE, UUID
   closer/             graceful shutdown (parallel close, panic recovery, signals)
   logger/             zap wrapper
 test/
@@ -78,6 +78,8 @@ proto/                Protobuf definitions (Phase 5)
 | JWT | EdDSA (Ed25519), short TTL (15 min access, 7 days refresh), key rotation via JWKS |
 | Refresh tokens | Family-based rotation + replay detection: revoked token invalidates entire family |
 | PKCE | Mandatory S256 for all OAuth flows |
+| MFA secrets | AES-256-GCM encrypted at rest (random nonce per encryption) |
+| Recovery codes | One-time use, bcrypt hashed, 10 codes per user |
 | Federation | State + PKCE verifier in Redis (TTL 10 min), consume-on-read |
 | Rate limiting | Redis sliding window (login: 10 req / 15 min per IP) |
 | Anti-enumeration | Identical responses for existing / nonexistent emails on reset and magic links |
@@ -113,6 +115,21 @@ GET  /api/v1/federation/{provider}/authorize  302  Redirect to provider (Google,
 GET  /api/v1/federation/{provider}/callback   200  Exchange code -> auto-provision / link -> tokens
 ```
 
+### MFA (Phase 4 — in progress)
+```
+POST   /api/v1/auth/mfa/totp/setup          200  Начать TOTP setup (Bearer required)
+POST   /api/v1/auth/mfa/totp/verify-setup   200  Подтвердить TOTP → recovery codes
+DELETE /api/v1/auth/mfa/totp                 204  Отключить TOTP (code required)
+POST   /api/v1/auth/mfa/totp/verify          200  MFA login — TOTP code
+POST   /api/v1/auth/mfa/recovery/verify      200  MFA login — recovery code
+```
+
+### Passwordless (Phase 4 — planned)
+```
+POST /api/v1/auth/magic-link/request     200  Запрос magic link (anti-enumeration)
+POST /api/v1/auth/magic-link/verify      200  Верификация magic link → tokens
+```
+
 ### Well-Known
 ```
 GET  /.well-known/openid-configuration    200  OIDC Discovery
@@ -132,7 +149,7 @@ Unit-тесты: покрытие usecase/auth 100%, token 95.9%, user 92.5%. И
 
 OAuth 2.0 Authorization Server с OIDC Discovery. Authorization Code + PKCE (S256), token endpoint (code exchange, refresh grant), token revocation (RFC 7009), JWKS с key rotation, UserInfo (RFC 6750). OAuth client registration (client_id / bcrypt secret).
 
-E2E тесты: 18 тестов — полный flow Register -> Verify Email -> Login -> OAuth Authorize (PKCE) -> Token Exchange -> UserInfo -> Refresh (rotation) -> Revoke. Error cases: replay detection, code reuse, wrong PKCE, RFC 7009 compliance.
+E2E тесты: 18 тестов — полный flow Register → Verify Email → Login → OAuth Authorize (PKCE) → Token Exchange → UserInfo → Refresh (rotation) → Revoke. Error cases: replay detection, code reuse, wrong PKCE, RFC 7009 compliance.
 
 ### Phase 3: Federation — Done (7/7)
 
@@ -141,39 +158,61 @@ Identity Federation через внешних провайдеров.
 - **Google OAuth** — OpenID Connect, scopes: `openid email profile`
 - **GitHub OAuth** — scopes: `user:email read:user`, fallback на `/user/emails` для приватных email
 - **Auto-provisioning** — новый user создаётся автоматически (без пароля, email_verified=true)
-- **Account linking** — совпадение email -> привязка к существующему аккаунту
+- **Account linking** — совпадение email → привязка к существующему аккаунту
 - **State management** — state + PKCE verifier в Redis, TTL 10 мин, consume-on-read
-- **Транзакционность** — `LinkIdentityTx`: find identity -> find/create user -> insert identity (single transaction)
+- **Транзакционность** — `LinkIdentityTx`: find identity → find/create user → insert identity (single transaction)
 
 E2E тесты: 9 тестов — auto-provisioning, account linking, repeat login, unknown provider (404), invalid state (400), missing code/state (400), email not verified (403), provider error (400).
 
 **Итого: 27 E2E тестов, полное покрытие OAuth 2.0 + Federation flows.**
 
-### Phase 4: MFA + Passwordless — Next
+### Phase 4: MFA + Passwordless — In Progress (3/12)
 
-| Feature | Description |
-|---------|------------|
-| TOTP | Authenticator apps (Google Auth, Authy), AES-256-GCM encrypted secrets |
-| Recovery codes | One-time backup codes, bcrypt hashed |
-| Magic links | Passwordless login via email |
+Инфраструктура MFA готова:
 
-### Phase 5: gRPC + Observability
+- **AES-256-GCM Encryptor** — шифрование TOTP-секретов at rest (random nonce, 32-byte key)
+- **Recovery codes** — таблица `recovery_codes` (FK CASCADE на users), PostgreSQL адаптер (SaveCodes batch insert, GetUnusedByUserID, MarkUsed, DeleteByUserID)
+- **User MFA update** — `UpdateMFA` в PostgreSQL адаптере (mfa_enabled + mfa_secret_enc)
+- **Domain models** — `RecoveryCode`, `MFAChallenge`, `LoginResult` + 7 sentinel errors (ErrMFANotEnabled, ErrMFAAlreadyEnabled, ErrInvalidTOTPCode, ErrInvalidMFAToken, ErrRecoveryCodeNotFound, ErrRecoveryCodeUsed, ErrMagicLinkNotFound)
+- **Интеграционные тесты** — 5 тестов (8 sub-tests) для recovery codes + MFA update
 
-| Feature | Description |
-|---------|------------|
-| gRPC API | IntrospectToken, ValidateToken (internal services) |
-| Prometheus | HTTP/gRPC metrics, token operations counters |
-| OpenTelemetry | Distributed tracing across services |
-| Health checks | Liveness + readiness probes |
+**Следующие шаги:**
 
-### Phase 6: Hardening
+| # | Задача | Описание |
+|---|--------|----------|
+| TASK-039 | MFA Service: SetupTOTP + VerifySetup | Генерация TOTP key, шифрование секрета, verify → 10 recovery codes |
+| TASK-040 | MFA Service: VerifyTOTP + Recovery + Disable | Проверка TOTP/recovery кодов, отключение MFA |
+| TASK-041 | JWT: MFA token + Auth MFA-aware | MFA pending JWT (5 мин), Login → MFAChallenge при mfa_enabled |
+| TASK-042 | Auth: CompleteMFALogin/Recovery | Второй шаг MFA-логина через TOTP или recovery code |
+| TASK-043 | Handler: MFA setup endpoints | POST setup, verify-setup, DELETE disable (Bearer) |
+| TASK-044 | Handler: MFA verify + rate limiting | POST totp/verify, recovery/verify (5 req / 5 min) |
+| TASK-045 | Magic Link service | RequestMagicLink (anti-enumeration), VerifyMagicLink |
+| TASK-046 | Handler: Magic Link endpoints | POST request, verify (3 req / 15 min rate limit) |
+| TASK-047 | E2E тесты: MFA + Magic Link | Full TOTP flow, recovery, disable, magic link |
 
-| Feature | Description |
-|---------|------------|
-| Docker | Full docker-compose environment |
-| Security audit | OWASP top 10 review |
-| OpenAPI 3.0 | Full API spec + Swagger UI |
-| CI/CD | GitHub Actions (lint, test, build, deploy) |
+### Phase 5: gRPC + Observability — Planned (0/11)
+
+| Feature | Задачи | Description |
+|---------|--------|------------|
+| Protobuf + gRPC server | TASK-048, 049 | buf setup, proto definitions, server scaffold |
+| gRPC handlers | TASK-050, 051 | IntrospectToken (+ cache), ValidateToken, GetUser, BatchValidate |
+| Interceptors | TASK-052 | Auth (API key), Logging, Reflection |
+| Prometheus | TASK-053, 054 | HTTP/gRPC metrics middleware, DB/Redis metrics, /metrics endpoint |
+| OpenTelemetry | TASK-055, 056 | TracerProvider, HTTP/gRPC/DB/Redis tracing |
+| Health checks | TASK-057 | /healthz, /readyz (PG + Redis), gRPC Health service |
+| E2E тесты | TASK-058 | gRPC introspection, validation, batch, auth interceptor |
+
+### Phase 6: Hardening — Planned (0/7)
+
+| Feature | Задачи | Description |
+|---------|--------|------------|
+| Security headers | TASK-059 | X-Content-Type-Options, X-Frame-Options, HSTS, CSP |
+| Graceful shutdown | TASK-060 | LIFO: HTTP → gRPC → OTel → Redis → PG |
+| Security audit | TASK-061 | gosec, rate limit completeness, TTL audit, secret logging |
+| Docker Compose | TASK-062 | Full environment: app + PG + Redis + Prometheus + Jaeger |
+| OpenAPI 3.0 | TASK-063 | Full spec for all REST endpoints |
+| CI/CD | TASK-064 | GitHub Actions (lint, test, integration, build, docker) |
+| README | TASK-065 | Quick Start guide, .env.example |
 
 ## Development
 
@@ -211,7 +250,7 @@ task test:cover
 # Integration tests (requires Docker — spins up PostgreSQL + Redis via testcontainers)
 task test:integration
 
-# E2E tests (requires Docker — full OAuth 2.0 + Federation flow)
+# E2E tests (requires Docker — full OAuth 2.0 + Federation + MFA flows)
 task test:e2e
 ```
 
@@ -309,6 +348,13 @@ federated_identities
 ├── created_at
 ├── updated_at
 └── UNIQUE (provider, provider_user_id)
+
+recovery_codes
+├── id (UUID PK)
+├── user_id (FK -> users, CASCADE)
+├── code_hash (TEXT, bcrypt)
+├── used (BOOLEAN, default false)
+└── created_at
 ```
 
 ## License
