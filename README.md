@@ -167,24 +167,25 @@ E2E тесты: 9 тестов — auto-provisioning, account linking, repeat lo
 
 **Итого: 27 E2E тестов, полное покрытие OAuth 2.0 + Federation flows.**
 
-### Phase 4: MFA + Passwordless — In Progress (5/12)
+### Phase 4: MFA + Passwordless — In Progress (7/12)
 
-Инфраструктура и бизнес-логика MFA готовы:
+MFA инфраструктура, бизнес-логика и auth-интеграция готовы:
 
 - **AES-256-GCM Encryptor** — шифрование TOTP-секретов at rest (random nonce, 32-byte key)
 - **Recovery codes** — таблица `recovery_codes` (FK CASCADE на users), PostgreSQL адаптер (SaveCodes batch insert, GetUnusedByUserID, MarkUsed, DeleteByUserID)
 - **User MFA update** — `UpdateMFA` в PostgreSQL адаптере (mfa_enabled + mfa_secret_enc)
 - **Domain models** — `RecoveryCode`, `MFAChallenge`, `LoginResult` + 7 sentinel errors (ErrMFANotEnabled, ErrMFAAlreadyEnabled, ErrInvalidTOTPCode, ErrInvalidMFAToken, ErrRecoveryCodeNotFound, ErrRecoveryCodeUsed, ErrMagicLinkNotFound)
 - **MFA usecase** — полный TOTP lifecycle: SetupTOTP (двухфазный setup), VerifySetup (активация + 10 recovery codes), VerifyTOTP (валидация с skew ±1), VerifyRecoveryCode (bcrypt перебор + MarkUsed), DisableTOTP (fallback TOTP → recovery, обнуление секрета)
+- **JWT MFA token** — EdDSA JWT с purpose=mfa_pending (TTL 5 мин), ValidateMFAToken в jwt adapter
+- **Auth MFA-aware Login** — Login возвращает `LoginResult{MFAChallenge}` при mfa_enabled, обратная совместимость для пользователей без MFA
+- **CompleteMFALogin / CompleteMFARecovery** — второй шаг MFA-логина: валидация MFA-токена → проверка TOTP-кода или recovery code → выпуск токенов
 - **Интеграционные тесты** — 5 тестов (8 sub-tests) для recovery codes + MFA update
-- **Unit-тесты MFA** — 27 тестов (SetupTOTP 5, VerifySetup 9 + bcrypt, VerifyTOTP 5, VerifyRecoveryCode 5, DisableTOTP 6)
+- **Unit-тесты** — MFA usecase 27 тестов, auth usecase 20 тестов (Login 11 + CompleteMFALogin 4 + CompleteMFARecovery 5), JWT MFA adapter 5 тестов
 
 **Следующие шаги:**
 
 | # | Задача | Описание |
 |---|--------|----------|
-| TASK-041 | JWT: MFA token + Auth MFA-aware | MFA pending JWT (5 мин), Login → MFAChallenge при mfa_enabled |
-| TASK-042 | Auth: CompleteMFALogin/Recovery | Второй шаг MFA-логина через TOTP или recovery code |
 | TASK-043 | Handler: MFA setup endpoints | POST setup, verify-setup, DELETE disable (Bearer) |
 | TASK-044 | Handler: MFA verify + rate limiting | POST totp/verify, recovery/verify (5 req / 5 min) |
 | TASK-045 | Magic Link service | RequestMagicLink (anti-enumeration), VerifyMagicLink |

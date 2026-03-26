@@ -22,6 +22,9 @@ packages:
       PasswordVerifier:
       TokenIssuer:
       MFAChallengeIssuer:
+      MFATokenValidator:
+      TOTPVerifier:
+      RecoveryVerifier:
 
   github.com/sanchey92/sso/internal/usecase/oauth:
     interfaces:

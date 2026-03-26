@@ -28,21 +28,48 @@ type MFAChallengeIssuer interface {
 	IssueMFAChallenge(ctx context.Context, userID string) (*model.MFAChallenge, error)
 }
 
-type Service struct {
-	userRepo  UserGetter
-	hasher    PasswordVerifier
-	tokenSvc  TokenIssuer
-	mfaIssuer MFAChallengeIssuer
-	log       *zap.Logger
+type MFATokenValidator interface {
+	ValidateMFAToken(token string) (userID string, err error)
 }
 
-func New(ur UserGetter, h PasswordVerifier, ts TokenIssuer, mfaIssuer MFAChallengeIssuer, log *zap.Logger) *Service {
+type TOTPVerifier interface {
+	VerifyTOTP(ctx context.Context, userID, code string) (*model.User, error)
+}
+
+type RecoveryVerifier interface {
+	VerifyRecoveryCode(ctx context.Context, userID, code string) error
+}
+
+type Service struct {
+	userRepo     UserGetter
+	hasher       PasswordVerifier
+	tokenSvc     TokenIssuer
+	mfaIssuer    MFAChallengeIssuer
+	mfaValidator MFATokenValidator
+	totpVerifier TOTPVerifier
+	recoveryVer  RecoveryVerifier
+	log          *zap.Logger
+}
+
+func New(
+	userRepo UserGetter,
+	hasher PasswordVerifier,
+	tokenSvc TokenIssuer,
+	mfaIssuer MFAChallengeIssuer,
+	mfaValidator MFATokenValidator,
+	totpVerifier TOTPVerifier,
+	recoveryVer RecoveryVerifier,
+	log *zap.Logger,
+) *Service {
 	return &Service{
-		userRepo:  ur,
-		hasher:    h,
-		tokenSvc:  ts,
-		mfaIssuer: mfaIssuer,
-		log:       log,
+		userRepo:     userRepo,
+		hasher:       hasher,
+		tokenSvc:     tokenSvc,
+		mfaIssuer:    mfaIssuer,
+		mfaValidator: mfaValidator,
+		totpVerifier: totpVerifier,
+		recoveryVer:  recoveryVer,
+		log:          log,
 	}
 }
 
@@ -90,4 +117,41 @@ func (s *Service) Login(ctx context.Context, email, password string) (*model.Log
 	s.log.Info("user logged in", zap.String("user_id", user.ID))
 
 	return &model.LoginResult{Tokens: pair}, nil
+}
+
+func (s *Service) CompleteMFALogin(ctx context.Context, mfaToken, totpCode string) (*model.TokenPair, error) {
+	userID, err := s.mfaValidator.ValidateMFAToken(mfaToken)
+	if err != nil {
+		return nil, fmt.Errorf("validate mfa token: %w", err)
+	}
+
+	if _, err := s.totpVerifier.VerifyTOTP(ctx, userID, totpCode); err != nil {
+		return nil, fmt.Errorf("verify mfa: %w", err)
+	}
+
+	pair, err := s.tokenSvc.IssueTokenPair(ctx, userID, "", nil)
+	if err != nil {
+		return nil, fmt.Errorf("issue token pair: %w", err)
+	}
+	s.log.Info("mfa login completed", zap.String("user_id", userID))
+	return pair, nil
+}
+
+func (s *Service) CompleteMFARecovery(ctx context.Context, mfaToken, recoveryCode string) (*model.TokenPair, error) {
+	userID, err := s.mfaValidator.ValidateMFAToken(mfaToken)
+	if err != nil {
+		return nil, fmt.Errorf("validate mfa token: %w", err)
+	}
+
+	if err := s.recoveryVer.VerifyRecoveryCode(ctx, userID, recoveryCode); err != nil {
+		return nil, fmt.Errorf("verify recovery code: %w", err)
+	}
+
+	pair, err := s.tokenSvc.IssueTokenPair(ctx, userID, "", nil)
+	if err != nil {
+		return nil, fmt.Errorf("issue token pair: %w", err)
+	}
+
+	s.log.Warn("mfa recovery login completed", zap.String("user_id", userID))
+	return pair, nil
 }
