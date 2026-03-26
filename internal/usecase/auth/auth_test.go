@@ -30,15 +30,15 @@ func TestService_Login(t *testing.T) {
 		name      string
 		email     string
 		password  string
-		setupMock func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer)
+		setupMock func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer, mi *mocks.MFAChallengeIssuer)
 		wantErr   string
-		check     func(t *testing.T, pair *model.TokenPair)
+		check     func(t *testing.T, result *model.LoginResult)
 	}{
 		{
 			name:     "successful login",
 			email:    "user@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
 					Return(validUser, nil)
 				pv.EXPECT().Verify("securepassword", "argon2id-hash").
@@ -50,17 +50,55 @@ func TestService_Login(t *testing.T) {
 						ExpiresIn:    60,
 					}, nil)
 			},
-			check: func(t *testing.T, pair *model.TokenPair) {
-				assert.Equal(t, "access-jwt-token", pair.AccessToken)
-				assert.Equal(t, "refresh-token", pair.RefreshToken)
-				assert.Equal(t, int64(60), pair.ExpiresIn)
+			check: func(t *testing.T, result *model.LoginResult) {
+				require.NotNil(t, result.Tokens)
+				assert.Nil(t, result.MFAChallenge)
+				assert.Equal(t, "access-jwt-token", result.Tokens.AccessToken)
+				assert.Equal(t, "refresh-token", result.Tokens.RefreshToken)
+				assert.Equal(t, int64(60), result.Tokens.ExpiresIn)
 			},
+		},
+		{
+			name:     "mfa enabled returns challenge",
+			email:    "user@example.com",
+			password: "securepassword",
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer, mi *mocks.MFAChallengeIssuer) {
+				mfaUser := *validUser
+				mfaUser.MFAEnabled = true
+				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
+					Return(&mfaUser, nil)
+				pv.EXPECT().Verify("securepassword", "argon2id-hash").
+					Return(true, nil)
+				mi.EXPECT().IssueMFAChallenge(mock.Anything, "user-uuid").
+					Return(&model.MFAChallenge{MFAToken: "mfa-jwt"}, nil)
+			},
+			check: func(t *testing.T, result *model.LoginResult) {
+				assert.Nil(t, result.Tokens)
+				require.NotNil(t, result.MFAChallenge)
+				assert.Equal(t, "mfa-jwt", result.MFAChallenge.MFAToken)
+			},
+		},
+		{
+			name:     "mfa challenge issuer error",
+			email:    "user@example.com",
+			password: "securepassword",
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer, mi *mocks.MFAChallengeIssuer) {
+				mfaUser := *validUser
+				mfaUser.MFAEnabled = true
+				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
+					Return(&mfaUser, nil)
+				pv.EXPECT().Verify("securepassword", "argon2id-hash").
+					Return(true, nil)
+				mi.EXPECT().IssueMFAChallenge(mock.Anything, "user-uuid").
+					Return(nil, errors.New("sign failed"))
+			},
+			wantErr: "issue mfa challenge: sign failed",
 		},
 		{
 			name:     "user not found returns invalid credentials",
 			email:    "nobody@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, _ *mocks.PasswordVerifier, _ *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, _ *mocks.PasswordVerifier, _ *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "nobody@example.com").
 					Return(nil, domainerrors.ErrUserNotFound)
 			},
@@ -70,7 +108,7 @@ func TestService_Login(t *testing.T) {
 			name:     "wrong password returns invalid credentials",
 			email:    "user@example.com",
 			password: "wrongpassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
 					Return(validUser, nil)
 				pv.EXPECT().Verify("wrongpassword", "argon2id-hash").
@@ -82,7 +120,7 @@ func TestService_Login(t *testing.T) {
 			name:     "email not verified",
 			email:    "user@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				unverified := *validUser
 				unverified.EmailVerified = false
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
@@ -96,7 +134,7 @@ func TestService_Login(t *testing.T) {
 			name:     "blocked user returns invalid credentials",
 			email:    "user@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				blocked := *validUser
 				blocked.Status = model.UserStatusBlocked
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
@@ -110,7 +148,7 @@ func TestService_Login(t *testing.T) {
 			name:     "repository unexpected error",
 			email:    "user@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, _ *mocks.PasswordVerifier, _ *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, _ *mocks.PasswordVerifier, _ *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
 					Return(nil, errors.New("db connection lost"))
 			},
@@ -120,7 +158,7 @@ func TestService_Login(t *testing.T) {
 			name:     "hasher verify error",
 			email:    "user@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, _ *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
 					Return(validUser, nil)
 				pv.EXPECT().Verify("securepassword", "argon2id-hash").
@@ -132,7 +170,7 @@ func TestService_Login(t *testing.T) {
 			name:     "token issuer error",
 			email:    "user@example.com",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
 					Return(validUser, nil)
 				pv.EXPECT().Verify("securepassword", "argon2id-hash").
@@ -146,7 +184,7 @@ func TestService_Login(t *testing.T) {
 			name:     "email normalized before lookup",
 			email:    "  User@Example.COM  ",
 			password: "securepassword",
-			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer) {
+			setupMock: func(ug *mocks.UserGetter, pv *mocks.PasswordVerifier, ti *mocks.TokenIssuer, _ *mocks.MFAChallengeIssuer) {
 				ug.EXPECT().GetByEmail(mock.Anything, "user@example.com").
 					Return(validUser, nil)
 				pv.EXPECT().Verify("securepassword", "argon2id-hash").
@@ -158,8 +196,9 @@ func TestService_Login(t *testing.T) {
 						ExpiresIn:    60,
 					}, nil)
 			},
-			check: func(t *testing.T, pair *model.TokenPair) {
-				assert.NotEmpty(t, pair.AccessToken)
+			check: func(t *testing.T, result *model.LoginResult) {
+				require.NotNil(t, result.Tokens)
+				assert.NotEmpty(t, result.Tokens.AccessToken)
 			},
 		},
 	}
@@ -169,24 +208,25 @@ func TestService_Login(t *testing.T) {
 			userGetter := mocks.NewUserGetter(t)
 			passVerifier := mocks.NewPasswordVerifier(t)
 			tokenIssuer := mocks.NewTokenIssuer(t)
-			tt.setupMock(userGetter, passVerifier, tokenIssuer)
+			mfaIssuer := mocks.NewMFAChallengeIssuer(t)
+			tt.setupMock(userGetter, passVerifier, tokenIssuer, mfaIssuer)
 
-			svc := New(userGetter, passVerifier, tokenIssuer, zap.NewNop())
+			svc := New(userGetter, passVerifier, tokenIssuer, mfaIssuer, zap.NewNop())
 
-			pair, err := svc.Login(ctx, tt.email, tt.password)
+			result, err := svc.Login(ctx, tt.email, tt.password)
 
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.wantErr)
-				assert.Nil(t, pair)
+				assert.Nil(t, result)
 				return
 			}
 
 			require.NoError(t, err)
-			require.NotNil(t, pair)
+			require.NotNil(t, result)
 
 			if tt.check != nil {
-				tt.check(t, pair)
+				tt.check(t, result)
 			}
 		})
 	}

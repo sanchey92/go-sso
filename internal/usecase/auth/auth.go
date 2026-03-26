@@ -24,23 +24,29 @@ type TokenIssuer interface {
 	IssueTokenPair(ctx context.Context, userID, clientID string, scopes []string) (*model.TokenPair, error)
 }
 
-type Service struct {
-	userRepo UserGetter
-	hasher   PasswordVerifier
-	tokenSvc TokenIssuer
-	log      *zap.Logger
+type MFAChallengeIssuer interface {
+	IssueMFAChallenge(ctx context.Context, userID string) (*model.MFAChallenge, error)
 }
 
-func New(ur UserGetter, h PasswordVerifier, ts TokenIssuer, log *zap.Logger) *Service {
+type Service struct {
+	userRepo  UserGetter
+	hasher    PasswordVerifier
+	tokenSvc  TokenIssuer
+	mfaIssuer MFAChallengeIssuer
+	log       *zap.Logger
+}
+
+func New(ur UserGetter, h PasswordVerifier, ts TokenIssuer, mfaIssuer MFAChallengeIssuer, log *zap.Logger) *Service {
 	return &Service{
-		userRepo: ur,
-		hasher:   h,
-		tokenSvc: ts,
-		log:      log,
+		userRepo:  ur,
+		hasher:    h,
+		tokenSvc:  ts,
+		mfaIssuer: mfaIssuer,
+		log:       log,
 	}
 }
 
-func (s *Service) Login(ctx context.Context, email, password string) (*model.TokenPair, error) {
+func (s *Service) Login(ctx context.Context, email, password string) (*model.LoginResult, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
 	user, err := s.userRepo.GetByEmail(ctx, email)
@@ -67,6 +73,15 @@ func (s *Service) Login(ctx context.Context, email, password string) (*model.Tok
 		return nil, domainerrors.ErrInvalidCredentials
 	}
 
+	if user.MFAEnabled {
+		challenge, err := s.mfaIssuer.IssueMFAChallenge(ctx, user.ID)
+		if err != nil {
+			return nil, fmt.Errorf("issue mfa challenge: %w", err)
+		}
+		s.log.Info("mfa challenge issued for login", zap.String("user_id", user.ID))
+		return &model.LoginResult{MFAChallenge: challenge}, nil
+	}
+
 	pair, err := s.tokenSvc.IssueTokenPair(ctx, user.ID, "", nil)
 	if err != nil {
 		return nil, fmt.Errorf("issue token pair: %w", err)
@@ -74,5 +89,5 @@ func (s *Service) Login(ctx context.Context, email, password string) (*model.Tok
 
 	s.log.Info("user logged in", zap.String("user_id", user.ID))
 
-	return pair, nil
+	return &model.LoginResult{Tokens: pair}, nil
 }

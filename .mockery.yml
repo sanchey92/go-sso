@@ -21,6 +21,7 @@ packages:
       UserGetter:
       PasswordVerifier:
       TokenIssuer:
+      MFAChallengeIssuer:
 
   github.com/sanchey92/sso/internal/usecase/oauth:
     interfaces:
