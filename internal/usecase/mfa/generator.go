@@ -31,7 +31,7 @@ func generateRecoveryCodes(count int) (raw []string, hashes []string, err error)
 }
 
 func generateOneCode() (string, error) {
-	buf := make([]byte, 8)
+	buf := make([]byte, recoveryCodeLen)
 
 	for i := range buf {
 		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(alphanumeric))))
@@ -41,5 +41,6 @@ func generateOneCode() (string, error) {
 		buf[i] = alphanumeric[idx.Int64()]
 	}
 
-	return string(buf[:4]) + "-" + string(buf[4:]), nil
+	half := recoveryCodeLen / 2
+	return string(buf[:half]) + "-" + string(buf[half:]), nil
 }

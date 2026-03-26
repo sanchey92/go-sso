@@ -2,12 +2,14 @@ package mfa
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
@@ -36,14 +38,20 @@ type Encryptor interface {
 	Decrypt(ciphertext []byte) ([]byte, error)
 }
 
+type RecoveryReader interface {
+	GetUnusedByUserID(ctx context.Context, userID string) ([]model.RecoveryCode, error)
+	MarkUsed(ctx context.Context, id string) error
+}
+
 type Service struct {
-	userRepo      UserGetter
-	mfaUpdater    Updater
-	encryptor     Encryptor
-	recoveryCodes RecoveryCodeRepo
-	issuer        string
-	skew          uint
-	log           *zap.Logger
+	userRepo       UserGetter
+	mfaUpdater     Updater
+	encryptor      Encryptor
+	recoveryCodes  RecoveryCodeRepo
+	recoveryReader RecoveryReader
+	issuer         string
+	skew           uint
+	log            *zap.Logger
 }
 
 func New(
@@ -51,18 +59,20 @@ func New(
 	mfaUpdater Updater,
 	enc Encryptor,
 	rc RecoveryCodeRepo,
+	rr RecoveryReader,
 	issuer string,
 	skew uint,
 	log *zap.Logger,
 ) *Service {
 	return &Service{
-		userRepo:      userRepo,
-		mfaUpdater:    mfaUpdater,
-		encryptor:     enc,
-		recoveryCodes: rc,
-		issuer:        issuer,
-		skew:          skew,
-		log:           log,
+		userRepo:       userRepo,
+		mfaUpdater:     mfaUpdater,
+		encryptor:      enc,
+		recoveryCodes:  rc,
+		recoveryReader: rr,
+		issuer:         issuer,
+		skew:           skew,
+		log:            log,
 	}
 }
 
@@ -102,9 +112,11 @@ func (s *Service) VerifySetup(ctx context.Context, userID, code string) ([]strin
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
+
 	if user.MFAEnabled {
 		return nil, domainerrors.ErrMFAAlreadyEnabled
 	}
+
 	if user.MFASecretEnc == nil {
 		return nil, domainerrors.ErrMFANotEnabled
 	}
@@ -123,7 +135,7 @@ func (s *Service) VerifySetup(ctx context.Context, userID, code string) ([]strin
 	}
 
 	if err := s.mfaUpdater.UpdateMFA(ctx, userID, true, user.MFASecretEnc); err != nil {
-		return nil, fmt.Errorf("enable fma: %w", err)
+		return nil, fmt.Errorf("enable mfa: %w", err)
 	}
 
 	rawCodes, hashes, err := generateRecoveryCodes(recoveryCodeCount)
@@ -141,4 +153,66 @@ func (s *Service) VerifySetup(ctx context.Context, userID, code string) ([]strin
 
 	s.log.Info("mfa setup verified", zap.String("user_id", userID))
 	return rawCodes, nil
+}
+
+func (s *Service) VerifyTOTP(ctx context.Context, userID, code string) (*model.User, error) {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+
+	if !user.MFAEnabled {
+		return nil, domainerrors.ErrMFANotEnabled
+	}
+
+	secret, err := s.encryptor.Decrypt(user.MFASecretEnc)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt mfa secret: %w", err)
+	}
+
+	valid, err := totp.ValidateCustom(code, string(secret), time.Now(), totp.ValidateOpts{
+		Skew:   s.skew,
+		Digits: otp.DigitsSix,
+	})
+	if err != nil || !valid {
+		return nil, domainerrors.ErrInvalidTOTPCode
+	}
+	return user, nil
+}
+
+func (s *Service) VerifyRecoveryCode(ctx context.Context, userID, code string) error {
+	codes, err := s.recoveryReader.GetUnusedByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("get unused recovery codes: %w", err)
+	}
+
+	for _, rc := range codes {
+		if err := bcrypt.CompareHashAndPassword([]byte(rc.CodeHash), []byte(code)); err == nil {
+			if err := s.recoveryReader.MarkUsed(ctx, rc.ID); err != nil {
+				return fmt.Errorf("mark recovery code used: %w", err)
+			}
+			return nil
+		}
+	}
+	return domainerrors.ErrRecoveryCodeNotFound
+}
+
+func (s *Service) DisableTOTP(ctx context.Context, userID, code string) error {
+	if _, err := s.VerifyTOTP(ctx, userID, code); err != nil {
+		if !errors.Is(err, domainerrors.ErrInvalidTOTPCode) {
+			return err
+		}
+		if err := s.VerifyRecoveryCode(ctx, userID, code); err != nil {
+			return err
+		}
+	}
+	if err := s.mfaUpdater.UpdateMFA(ctx, userID, false, nil); err != nil {
+		return fmt.Errorf("disable mfa: %w", err)
+	}
+
+	if err := s.recoveryCodes.DeleteByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("delete recovery codes: %w", err)
+	}
+	s.log.Info("mfa disabled", zap.String("user_id", userID))
+	return nil
 }

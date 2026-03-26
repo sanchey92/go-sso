@@ -52,6 +52,7 @@ packages:
       Updater:
       Encryptor:
       RecoveryCodeRepo:
+      RecoveryReader:
 
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth:
     interfaces:

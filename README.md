@@ -28,6 +28,7 @@ internal/
     client/           Create, GetByID, VerifySecret (OAuth clients)
     oauth/            Authorize, ExchangeCode (OAuth 2.0 + PKCE)
     federation/       InitiateOAuth, HandleCallback (Google, GitHub)
+    mfa/              SetupTOTP, VerifySetup, VerifyTOTP, VerifyRecoveryCode, DisableTOTP
   adapter/
     driving/rest/     HTTP server (chi), handler sub-packages, middleware
     driven/           PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, AES-256-GCM, Email, OAuth providers
@@ -166,22 +167,22 @@ E2E тесты: 9 тестов — auto-provisioning, account linking, repeat lo
 
 **Итого: 27 E2E тестов, полное покрытие OAuth 2.0 + Federation flows.**
 
-### Phase 4: MFA + Passwordless — In Progress (3/12)
+### Phase 4: MFA + Passwordless — In Progress (5/12)
 
-Инфраструктура MFA готова:
+Инфраструктура и бизнес-логика MFA готовы:
 
 - **AES-256-GCM Encryptor** — шифрование TOTP-секретов at rest (random nonce, 32-byte key)
 - **Recovery codes** — таблица `recovery_codes` (FK CASCADE на users), PostgreSQL адаптер (SaveCodes batch insert, GetUnusedByUserID, MarkUsed, DeleteByUserID)
 - **User MFA update** — `UpdateMFA` в PostgreSQL адаптере (mfa_enabled + mfa_secret_enc)
 - **Domain models** — `RecoveryCode`, `MFAChallenge`, `LoginResult` + 7 sentinel errors (ErrMFANotEnabled, ErrMFAAlreadyEnabled, ErrInvalidTOTPCode, ErrInvalidMFAToken, ErrRecoveryCodeNotFound, ErrRecoveryCodeUsed, ErrMagicLinkNotFound)
+- **MFA usecase** — полный TOTP lifecycle: SetupTOTP (двухфазный setup), VerifySetup (активация + 10 recovery codes), VerifyTOTP (валидация с skew ±1), VerifyRecoveryCode (bcrypt перебор + MarkUsed), DisableTOTP (fallback TOTP → recovery, обнуление секрета)
 - **Интеграционные тесты** — 5 тестов (8 sub-tests) для recovery codes + MFA update
+- **Unit-тесты MFA** — 27 тестов (SetupTOTP 5, VerifySetup 9 + bcrypt, VerifyTOTP 5, VerifyRecoveryCode 5, DisableTOTP 6)
 
 **Следующие шаги:**
 
 | # | Задача | Описание |
 |---|--------|----------|
-| TASK-039 | MFA Service: SetupTOTP + VerifySetup | Генерация TOTP key, шифрование секрета, verify → 10 recovery codes |
-| TASK-040 | MFA Service: VerifyTOTP + Recovery + Disable | Проверка TOTP/recovery кодов, отключение MFA |
 | TASK-041 | JWT: MFA token + Auth MFA-aware | MFA pending JWT (5 мин), Login → MFAChallenge при mfa_enabled |
 | TASK-042 | Auth: CompleteMFALogin/Recovery | Второй шаг MFA-логина через TOTP или recovery code |
 | TASK-043 | Handler: MFA setup endpoints | POST setup, verify-setup, DELETE disable (Bearer) |

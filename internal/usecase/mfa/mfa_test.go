@@ -109,9 +109,10 @@ func TestService_SetupTOTP(t *testing.T) {
 			updater := mocks.NewUpdater(t)
 			encryptor := mocks.NewEncryptor(t)
 			rc := mocks.NewRecoveryCodeRepo(t)
+			rr := mocks.NewRecoveryReader(t)
 			tt.setupMock(userGetter, updater, encryptor)
 
-			svc := New(userGetter, updater, encryptor, rc, testIssuer, 1, zap.NewNop())
+			svc := New(userGetter, updater, encryptor, rc, rr, testIssuer, 1, zap.NewNop())
 
 			uri, err := svc.SetupTOTP(ctx, userID)
 
@@ -254,7 +255,7 @@ func TestService_VerifySetup(t *testing.T) {
 				upd.EXPECT().UpdateMFA(mock.Anything, userID, true, encryptedSecret).
 					Return(errors.New("db error"))
 			},
-			wantErr: "enable fma: db error",
+			wantErr: "enable mfa: db error",
 		},
 		{
 			name:     "delete old codes error",
@@ -304,9 +305,10 @@ func TestService_VerifySetup(t *testing.T) {
 			updater := mocks.NewUpdater(t)
 			encryptor := mocks.NewEncryptor(t)
 			rcRepo := mocks.NewRecoveryCodeRepo(t)
+			rr := mocks.NewRecoveryReader(t)
 			tt.setupMock(userGetter, updater, encryptor, rcRepo)
 
-			svc := New(userGetter, updater, encryptor, rcRepo, testIssuer, 1, zap.NewNop())
+			svc := New(userGetter, updater, encryptor, rcRepo, rr, testIssuer, 1, zap.NewNop())
 
 			code := tt.codeFunc(t)
 			codes, err := svc.VerifySetup(ctx, userID, code)
@@ -361,7 +363,8 @@ func TestService_VerifySetup_recovery_codes_are_bcrypt_hashes(t *testing.T) {
 		}).
 		Return(nil)
 
-	svc := New(userGetter, updater, encryptor, rcRepo, testIssuer, 1, zap.NewNop())
+	rr := mocks.NewRecoveryReader(t)
+	svc := New(userGetter, updater, encryptor, rcRepo, rr, testIssuer, 1, zap.NewNop())
 
 	validCode := generateValidCode(t, totpSecret)
 	rawCodes, err := svc.VerifySetup(ctx, userID, validCode)
@@ -372,5 +375,359 @@ func TestService_VerifySetup_recovery_codes_are_bcrypt_hashes(t *testing.T) {
 	for i, raw := range rawCodes {
 		err := bcrypt.CompareHashAndPassword([]byte(savedHashes[i]), []byte(raw))
 		assert.NoError(t, err, "recovery code %d hash mismatch", i)
+	}
+}
+
+func TestService_VerifyTOTP(t *testing.T) {
+	ctx := t.Context()
+	const userID = "user-123"
+
+	totpSecret := generateTOTPSecret(t)
+	encryptedSecret := []byte("encrypted-secret")
+
+	tests := []struct {
+		name      string
+		codeFunc  func(t *testing.T) string
+		setupMock func(ug *mocks.UserGetter, enc *mocks.Encryptor)
+		wantErr   string
+	}{
+		{
+			name:     "correct code returns user",
+			codeFunc: func(t *testing.T) string { return generateValidCode(t, totpSecret) },
+			setupMock: func(ug *mocks.UserGetter, enc *mocks.Encryptor) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						Email:        "user@example.com",
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+			},
+		},
+		{
+			name:     "wrong code",
+			codeFunc: func(_ *testing.T) string { return "000000" },
+			setupMock: func(ug *mocks.UserGetter, enc *mocks.Encryptor) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+			},
+			wantErr: domainerrors.ErrInvalidTOTPCode.Error(),
+		},
+		{
+			name:     "mfa not enabled",
+			codeFunc: func(_ *testing.T) string { return "123456" },
+			setupMock: func(ug *mocks.UserGetter, _ *mocks.Encryptor) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{ID: userID, MFAEnabled: false}, nil)
+			},
+			wantErr: domainerrors.ErrMFANotEnabled.Error(),
+		},
+		{
+			name:     "user not found",
+			codeFunc: func(_ *testing.T) string { return "123456" },
+			setupMock: func(ug *mocks.UserGetter, _ *mocks.Encryptor) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(nil, domainerrors.ErrUserNotFound)
+			},
+			wantErr: domainerrors.ErrUserNotFound.Error(),
+		},
+		{
+			name:     "decrypt error",
+			codeFunc: func(_ *testing.T) string { return "123456" },
+			setupMock: func(ug *mocks.UserGetter, enc *mocks.Encryptor) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return(nil, errors.New("decrypt failed"))
+			},
+			wantErr: "decrypt mfa secret: decrypt failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userGetter := mocks.NewUserGetter(t)
+			updater := mocks.NewUpdater(t)
+			encryptor := mocks.NewEncryptor(t)
+			rcRepo := mocks.NewRecoveryCodeRepo(t)
+			rr := mocks.NewRecoveryReader(t)
+			tt.setupMock(userGetter, encryptor)
+
+			svc := New(userGetter, updater, encryptor, rcRepo, rr, testIssuer, 1, zap.NewNop())
+
+			code := tt.codeFunc(t)
+			user, err := svc.VerifyTOTP(ctx, userID, code)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Nil(t, user)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, user)
+			assert.Equal(t, userID, user.ID)
+		})
+	}
+}
+
+func TestService_VerifyRecoveryCode(t *testing.T) {
+	ctx := t.Context()
+	const userID = "user-123"
+
+	rawCode := "ABCD-1234"
+	hash, err := bcrypt.GenerateFromPassword([]byte(rawCode), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		code      string
+		setupMock func(rr *mocks.RecoveryReader)
+		wantErr   string
+	}{
+		{
+			name: "valid unused code — second code matches",
+			code: rawCode,
+			setupMock: func(rr *mocks.RecoveryReader) {
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return([]model.RecoveryCode{
+						{ID: "code-1", CodeHash: "non-matching-hash", Used: false},
+						{ID: "code-2", CodeHash: string(hash), Used: false},
+					}, nil)
+				rr.EXPECT().MarkUsed(mock.Anything, "code-2").Return(nil)
+			},
+		},
+		{
+			name: "no match",
+			code: "WRONG-CODE",
+			setupMock: func(rr *mocks.RecoveryReader) {
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return([]model.RecoveryCode{
+						{ID: "code-1", CodeHash: string(hash), Used: false},
+					}, nil)
+			},
+			wantErr: domainerrors.ErrRecoveryCodeNotFound.Error(),
+		},
+		{
+			name: "all used — empty list",
+			code: rawCode,
+			setupMock: func(rr *mocks.RecoveryReader) {
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return([]model.RecoveryCode{}, nil)
+			},
+			wantErr: domainerrors.ErrRecoveryCodeNotFound.Error(),
+		},
+		{
+			name: "get unused error",
+			code: rawCode,
+			setupMock: func(rr *mocks.RecoveryReader) {
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return(nil, errors.New("db error"))
+			},
+			wantErr: "get unused recovery codes: db error",
+		},
+		{
+			name: "mark used error",
+			code: rawCode,
+			setupMock: func(rr *mocks.RecoveryReader) {
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return([]model.RecoveryCode{
+						{ID: "code-1", CodeHash: string(hash), Used: false},
+					}, nil)
+				rr.EXPECT().MarkUsed(mock.Anything, "code-1").
+					Return(errors.New("db error"))
+			},
+			wantErr: "mark recovery code used: db error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userGetter := mocks.NewUserGetter(t)
+			updater := mocks.NewUpdater(t)
+			encryptor := mocks.NewEncryptor(t)
+			rcRepo := mocks.NewRecoveryCodeRepo(t)
+			rr := mocks.NewRecoveryReader(t)
+			tt.setupMock(rr)
+
+			svc := New(userGetter, updater, encryptor, rcRepo, rr, testIssuer, 1, zap.NewNop())
+
+			err := svc.VerifyRecoveryCode(ctx, userID, tt.code)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestService_DisableTOTP(t *testing.T) {
+	ctx := t.Context()
+	const userID = "user-123"
+
+	totpSecret := generateTOTPSecret(t)
+	encryptedSecret := []byte("encrypted-secret")
+
+	recoveryCode := "ABCD-1234"
+	recoveryHash, err := bcrypt.GenerateFromPassword([]byte(recoveryCode), bcrypt.DefaultCost)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		codeFunc  func(t *testing.T) string
+		setupMock func(
+			ug *mocks.UserGetter,
+			upd *mocks.Updater,
+			enc *mocks.Encryptor,
+			rc *mocks.RecoveryCodeRepo,
+			rr *mocks.RecoveryReader,
+		)
+		wantErr string
+	}{
+		{
+			name:     "via valid TOTP code",
+			codeFunc: func(t *testing.T) string { return generateValidCode(t, totpSecret) },
+			setupMock: func(ug *mocks.UserGetter, upd *mocks.Updater, enc *mocks.Encryptor, rc *mocks.RecoveryCodeRepo, _ *mocks.RecoveryReader) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+				upd.EXPECT().UpdateMFA(mock.Anything, userID, false, ([]byte)(nil)).
+					Return(nil)
+				rc.EXPECT().DeleteByUserID(mock.Anything, userID).
+					Return(nil)
+			},
+		},
+		{
+			name:     "via recovery code — TOTP fails, recovery succeeds",
+			codeFunc: func(_ *testing.T) string { return recoveryCode },
+			setupMock: func(ug *mocks.UserGetter, upd *mocks.Updater, enc *mocks.Encryptor, rc *mocks.RecoveryCodeRepo, rr *mocks.RecoveryReader) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+				// "ABCD-1234" fails TOTP (wrong length) → ErrInvalidTOTPCode → fallback to recovery
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return([]model.RecoveryCode{
+						{ID: "code-1", CodeHash: string(recoveryHash), Used: false},
+					}, nil)
+				rr.EXPECT().MarkUsed(mock.Anything, "code-1").Return(nil)
+				upd.EXPECT().UpdateMFA(mock.Anything, userID, false, ([]byte)(nil)).
+					Return(nil)
+				rc.EXPECT().DeleteByUserID(mock.Anything, userID).
+					Return(nil)
+			},
+		},
+		{
+			name:     "both fail — TOTP invalid, no matching recovery code",
+			codeFunc: func(_ *testing.T) string { return "WRONG-CODE" },
+			setupMock: func(ug *mocks.UserGetter, _ *mocks.Updater, enc *mocks.Encryptor, _ *mocks.RecoveryCodeRepo, rr *mocks.RecoveryReader) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+				rr.EXPECT().GetUnusedByUserID(mock.Anything, userID).
+					Return([]model.RecoveryCode{}, nil)
+			},
+			wantErr: domainerrors.ErrRecoveryCodeNotFound.Error(),
+		},
+		{
+			name:     "mfa not enabled — no fallback to recovery",
+			codeFunc: func(_ *testing.T) string { return "123456" },
+			setupMock: func(ug *mocks.UserGetter, _ *mocks.Updater, _ *mocks.Encryptor, _ *mocks.RecoveryCodeRepo, _ *mocks.RecoveryReader) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{ID: userID, MFAEnabled: false}, nil)
+			},
+			wantErr: domainerrors.ErrMFANotEnabled.Error(),
+		},
+		{
+			name:     "update mfa error",
+			codeFunc: func(t *testing.T) string { return generateValidCode(t, totpSecret) },
+			setupMock: func(ug *mocks.UserGetter, upd *mocks.Updater, enc *mocks.Encryptor, _ *mocks.RecoveryCodeRepo, _ *mocks.RecoveryReader) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+				upd.EXPECT().UpdateMFA(mock.Anything, userID, false, ([]byte)(nil)).
+					Return(errors.New("db error"))
+			},
+			wantErr: "disable mfa: db error",
+		},
+		{
+			name:     "delete codes error",
+			codeFunc: func(t *testing.T) string { return generateValidCode(t, totpSecret) },
+			setupMock: func(ug *mocks.UserGetter, upd *mocks.Updater, enc *mocks.Encryptor, rc *mocks.RecoveryCodeRepo, _ *mocks.RecoveryReader) {
+				ug.EXPECT().GetByID(mock.Anything, userID).
+					Return(&model.User{
+						ID:           userID,
+						MFAEnabled:   true,
+						MFASecretEnc: encryptedSecret,
+					}, nil)
+				enc.EXPECT().Decrypt(encryptedSecret).
+					Return([]byte(totpSecret), nil)
+				upd.EXPECT().UpdateMFA(mock.Anything, userID, false, ([]byte)(nil)).
+					Return(nil)
+				rc.EXPECT().DeleteByUserID(mock.Anything, userID).
+					Return(errors.New("db error"))
+			},
+			wantErr: "delete recovery codes: db error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userGetter := mocks.NewUserGetter(t)
+			updater := mocks.NewUpdater(t)
+			encryptor := mocks.NewEncryptor(t)
+			rcRepo := mocks.NewRecoveryCodeRepo(t)
+			rr := mocks.NewRecoveryReader(t)
+			tt.setupMock(userGetter, updater, encryptor, rcRepo, rr)
+
+			svc := New(userGetter, updater, encryptor, rcRepo, rr, testIssuer, 1, zap.NewNop())
+
+			code := tt.codeFunc(t)
+			err := svc.DisableTOTP(ctx, userID, code)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+		})
 	}
 }
