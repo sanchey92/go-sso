@@ -43,14 +43,28 @@ func TestLogin(t *testing.T) {
 			body: `{"email":"test@example.com","password":"secret123"}`,
 			mockSetup: func(svc *mocks.AuthService) {
 				svc.EXPECT().Login(mock.Anything, "test@example.com", "secret123").
-					Return(&model.TokenPair{
-						AccessToken:  "access-tok",
-						RefreshToken: "refresh-tok",
-						ExpiresIn:    900,
+					Return(&model.LoginResult{
+						Tokens: &model.TokenPair{
+							AccessToken:  "access-tok",
+							RefreshToken: "refresh-tok",
+							ExpiresIn:    900,
+						},
 					}, nil)
 			},
 			wantStatus: http.StatusOK,
 			wantBody:   `{"access_token":"access-tok","refresh_token":"refresh-tok","expires_in":900}`,
+		},
+		{
+			name: "mfa required",
+			body: `{"email":"test@example.com","password":"secret123"}`,
+			mockSetup: func(svc *mocks.AuthService) {
+				svc.EXPECT().Login(mock.Anything, "test@example.com", "secret123").
+					Return(&model.LoginResult{
+						MFAChallenge: &model.MFAChallenge{MFAToken: "mfa-jwt"},
+					}, nil)
+			},
+			wantStatus: http.StatusOK,
+			wantBody:   `{"mfa_required":true,"mfa_token":"mfa-jwt"}`,
 		},
 		{
 			name:       "invalid json",

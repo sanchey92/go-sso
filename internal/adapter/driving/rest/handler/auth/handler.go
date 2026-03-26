@@ -14,7 +14,7 @@ import (
 )
 
 type AuthService interface {
-	Login(ctx context.Context, email, password string) (*model.TokenPair, error)
+	Login(ctx context.Context, email, password string) (*model.LoginResult, error)
 }
 
 type Handler struct {
@@ -33,16 +33,24 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pair, err := h.svc.Login(r.Context(), req.Email, req.Password)
+	result, err := h.svc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		h.handleError(w, r, err)
 		return
 	}
 
+	if result.MFAChallenge != nil {
+		httputil.RespondJSON(w, http.StatusOK, &mfaChallengeResponse{
+			MFARequired: true,
+			MFAToken:    result.MFAChallenge.MFAToken,
+		})
+		return
+	}
+
 	httputil.RespondJSON(w, http.StatusOK, &tokenResponse{
-		AccessToken:  pair.AccessToken,
-		RefreshToken: pair.RefreshToken,
-		ExpiresIn:    pair.ExpiresIn,
+		AccessToken:  result.Tokens.AccessToken,
+		RefreshToken: result.Tokens.RefreshToken,
+		ExpiresIn:    result.Tokens.ExpiresIn,
 	})
 }
 
@@ -70,4 +78,9 @@ type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"`
+}
+
+type mfaChallengeResponse struct {
+	MFARequired bool   `json:"mfa_required"`
+	MFAToken    string `json:"mfa_token"`
 }
