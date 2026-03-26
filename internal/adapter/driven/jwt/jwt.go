@@ -23,6 +23,7 @@ type Config struct {
 	Issuer          string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
+	MFATokenTTL     time.Duration
 }
 
 type Service struct {

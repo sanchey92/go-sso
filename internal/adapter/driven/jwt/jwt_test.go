@@ -16,6 +16,7 @@ func testConfig() *Config {
 		Issuer:          "test-issuer",
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 7 * 24 * time.Hour,
+		MFATokenTTL:     5 * time.Minute,
 	}
 }
 

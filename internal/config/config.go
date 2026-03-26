@@ -65,6 +65,7 @@ type RedisConfig struct {
 type AuthConfig struct {
 	AccessTokenTTL      time.Duration `yaml:"access_token_ttl"      env:"SSO_AUTH_ACCESS_TOKEN_TTL"      env-default:"15m"`
 	RefreshTokenTTL     time.Duration `yaml:"refresh_token_ttl"     env:"SSO_AUTH_REFRESH_TOKEN_TTL"     env-default:"168h"`
+	MFATokenTTL         time.Duration `yaml:"mfa_token_ttl"         env:"SSO_AUTH_MFA_TOKEN_TTL"         env-default:"5m"`
 	Issuer              string        `yaml:"issuer"                env:"SSO_AUTH_ISSUER"                env-required:"true"`
 	Audience            string        `yaml:"audience"              env:"SSO_AUTH_AUDIENCE"              env-default:"sso"`
 	JWTSigningAlgorithm string        `yaml:"jwt_signing_algorithm" env:"SSO_AUTH_JWT_SIGNING_ALGORITHM" env-default:"EdDSA"`
