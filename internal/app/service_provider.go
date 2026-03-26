@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/sanchey92/sso/internal/adapter/driven/email"
+	"github.com/sanchey92/sso/internal/adapter/driven/encryptor"
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
 	jwtadapter "github.com/sanchey92/sso/internal/adapter/driven/jwt"
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
@@ -30,6 +31,7 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/internal/usecase/client"
 	"github.com/sanchey92/sso/internal/usecase/federation"
+	"github.com/sanchey92/sso/internal/usecase/mfa"
 	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
@@ -41,6 +43,23 @@ type serviceProvider struct {
 	storage    *postgres.Storage
 	cache      *redis.Cache
 	httpServer *rest.Server
+}
+
+type adapters struct {
+	hasher         *hasher.Hasher
+	emailSender    *email.LogSender
+	encryptor      *encryptor.Encryptor
+	jwtService     *jwtadapter.Service
+	tokenValidator *jwtadapter.TokenValidator
+}
+
+type usecases struct {
+	auth       *auth.Service
+	user       *user.Service
+	token      *token.Service
+	client     *client.Service
+	oauth      *oauth.Service
+	federation *federation.Service
 }
 
 func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
@@ -56,43 +75,20 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 		return nil, fmt.Errorf("redis: %w", err)
 	}
 
-	jwtService, err := initJWT(&cfg.Auth)
+	a, err := initAdapters(cfg, log)
 	if err != nil {
-		return nil, fmt.Errorf("jwt: %w", err)
+		return nil, fmt.Errorf("adapters: %w", err)
 	}
-
-	h := hasher.New(hasher.DefaultConfig())
-	emailSender := email.NewLogSender(log, cfg.Server.HTTP.BaseURL)
 
 	httputil.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
 
-	tokenValidator := jwtadapter.NewTokenValidator(jwtService)
-	tokenService := token.New(jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, cfg.Auth.Audience, log)
-	userService := user.New(storage, h, cache, emailSender, tokenValidator, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
-
-	authService := auth.New(storage, h, tokenService, log)
-	clientService := client.New(storage, log)
-	oauthService := oauth.New(storage, clientService, cache, tokenService, cfg.OAuth.AuthCodeTTL, log)
-
-	providers := map[string]federation.IdentityProvider{
-		"google": provider.NewGoogleProvider(
-			cfg.Federation.Google.ClientID,
-			cfg.Federation.Google.ClientSecret,
-			cfg.Federation.Google.RedirectURL,
-		),
-		"github": provider.NewGitHubProvider(
-			cfg.Federation.GitHub.ClientID,
-			cfg.Federation.GitHub.ClientSecret,
-			cfg.Federation.GitHub.RedirectURL,
-		),
-	}
-	federationService := federation.New(providers, storage, tokenService, cache, cfg.Federation.StateTTL, log)
+	uc := initUseCases(cfg, storage, cache, a, log)
 
 	jwksProvider := func() ([]byte, error) {
-		return json.Marshal(jwtService.GetJWKS())
+		return json.Marshal(a.jwtService.GetJWKS())
 	}
 
-	httpServer := initHTTPServer(cfg, userService, authService, tokenService, clientService, oauthService, federationService, jwksProvider, cache, log)
+	httpServer := initHTTPServer(cfg, uc, jwksProvider, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -100,6 +96,53 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 		cache:      cache,
 		httpServer: httpServer,
 	}, nil
+}
+
+func initAdapters(cfg *config.Config, log *zap.Logger) (*adapters, error) {
+	jwtSvc, err := initJWT(&cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("jwt: %w", err)
+	}
+
+	enc, err := encryptor.New([]byte(cfg.Security.EncryptionKey))
+	if err != nil {
+		return nil, fmt.Errorf("encryptor: %w", err)
+	}
+
+	return &adapters{
+		hasher:         hasher.New(hasher.DefaultConfig()),
+		emailSender:    email.NewLogSender(log, cfg.Server.HTTP.BaseURL),
+		encryptor:      enc,
+		jwtService:     jwtSvc,
+		tokenValidator: jwtadapter.NewTokenValidator(jwtSvc),
+	}, nil
+}
+
+func initUseCases(cfg *config.Config, storage *postgres.Storage, cache *redis.Cache, a *adapters, log *zap.Logger) *usecases {
+	tokenSvc := token.New(a.jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, cfg.Auth.Audience, log)
+	userSvc := user.New(storage, a.hasher, cache, a.emailSender, a.tokenValidator, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
+	mfaSvc := mfa.New(storage, storage, a.encryptor, storage, storage, cfg.MFA.TOTP.Issuer, uint(cfg.MFA.TOTP.Skew), log)
+
+	authSvc := auth.New(storage, a.hasher, tokenSvc, tokenSvc, a.jwtService, mfaSvc, mfaSvc, log)
+	clientSvc := client.New(storage, log)
+	oauthSvc := oauth.New(storage, clientSvc, cache, tokenSvc, cfg.OAuth.AuthCodeTTL, log)
+	federationSvc := federation.New(initProviders(cfg.Federation), storage, tokenSvc, cache, cfg.Federation.StateTTL, log)
+
+	return &usecases{
+		auth:       authSvc,
+		user:       userSvc,
+		token:      tokenSvc,
+		client:     clientSvc,
+		oauth:      oauthSvc,
+		federation: federationSvc,
+	}
+}
+
+func initProviders(cfg config.FederationConfig) map[string]federation.IdentityProvider {
+	return map[string]federation.IdentityProvider{
+		"google": provider.NewGoogleProvider(cfg.Google.ClientID, cfg.Google.ClientSecret, cfg.Google.RedirectURL),
+		"github": provider.NewGitHubProvider(cfg.GitHub.ClientID, cfg.GitHub.ClientSecret, cfg.GitHub.RedirectURL),
+	}
 }
 
 func initLogger(cfg config.LogConfig) *zap.Logger {
@@ -143,8 +186,10 @@ func initCache(cfg *config.RedisConfig, log *zap.Logger) (*redis.Cache, error) {
 
 func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 	s, err := jwtadapter.NewService(&jwtadapter.Config{
-		Issuer:         cfg.Issuer,
-		AccessTokenTTL: cfg.AccessTokenTTL,
+		Issuer:          cfg.Issuer,
+		AccessTokenTTL:  cfg.AccessTokenTTL,
+		RefreshTokenTTL: cfg.RefreshTokenTTL,
+		MFATokenTTL:     cfg.MFATokenTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jwtadapter.NewService: %w", err)
@@ -154,29 +199,24 @@ func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 
 func initHTTPServer(
 	cfg *config.Config,
-	userSvc *user.Service,
-	authSvc *auth.Service,
-	tokenSvc *token.Service,
-	clientSvc *client.Service,
-	oauthSvc *oauth.Service,
-	federationSvc *federation.Service,
+	uc *usecases,
 	jwksProvider func() ([]byte, error),
 	cache *redis.Cache,
 	log *zap.Logger,
 ) *rest.Server {
 	handlers := rest.Handlers{
-		User:   userhandler.NewHandler(userSvc, log),
-		Auth:   authhandler.NewHandler(authSvc, log),
-		Token:  tokenhandler.NewHandler(tokenSvc, log),
-		Client: clienthandler.NewHandler(clientSvc, log),
-		OAuth:  oauthhandler.NewHandler(oauthSvc, oauthSvc, tokenSvc, tokenSvc, log),
+		User:   userhandler.NewHandler(uc.user, log),
+		Auth:   authhandler.NewHandler(uc.auth, log),
+		Token:  tokenhandler.NewHandler(uc.token, log),
+		Client: clienthandler.NewHandler(uc.client, log),
+		OAuth:  oauthhandler.NewHandler(uc.oauth, uc.oauth, uc.token, uc.token, log),
 		JWKS:   jwkshandler.NewHandler(jwksProvider, log),
 		Discovery: discoveryhandler.NewHandler(&discoveryhandler.Config{
 			Issuer:  cfg.Auth.Issuer,
 			BaseURL: cfg.Server.HTTP.BaseURL,
 		}),
-		UserInfo:   userinfohandler.NewHandler(userSvc, log),
-		Federation: federationhandler.NewHandler(federationSvc, federationSvc, log),
+		UserInfo:   userinfohandler.NewHandler(uc.user, log),
+		Federation: federationhandler.NewHandler(uc.federation, uc.federation, log),
 	}
 
 	loginRateLimit := middleware.RateLimit(
