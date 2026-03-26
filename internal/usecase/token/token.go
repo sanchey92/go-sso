@@ -15,6 +15,7 @@ import (
 type TokenGenerator interface {
 	GenerateToken(userID, audience string) (string, error)
 	GenerateRefreshToken() (raw, hash string, err error)
+	GenerateMFAToken(userID string) (string, error)
 }
 
 type RefreshTokenRepository interface {
@@ -65,6 +66,15 @@ func (s *Service) IssueTokenPair(ctx context.Context, userID, clientID string, s
 		RefreshToken: refreshToken,
 		ExpiresIn:    int64(s.accessTTL.Seconds()),
 	}, nil
+}
+
+func (s *Service) IssueMFAChallenge(ctx context.Context, userID string) (*model.MFAChallenge, error) {
+	token, err := s.tokenGen.GenerateMFAToken(userID)
+	if err != nil {
+		return nil, fmt.Errorf("generate mfa token: %w", err)
+	}
+	s.log.Info("mfa challenge issued", zap.String("user_id", userID))
+	return &model.MFAChallenge{MFAToken: token}, nil
 }
 
 func (s *Service) RefreshTokens(ctx context.Context, rawRefreshToken string) (*model.TokenPair, error) {

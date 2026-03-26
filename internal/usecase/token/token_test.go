@@ -133,6 +133,60 @@ func TestService_IssueTokenPair(t *testing.T) {
 	}
 }
 
+func TestService_IssueMFAChallenge(t *testing.T) {
+	ctx := t.Context()
+
+	tests := []struct {
+		name      string
+		userID    string
+		setupMock func(tg *mocks.TokenGenerator)
+		wantErr   string
+		wantToken string
+	}{
+		{
+			name:   "successful issue",
+			userID: "user-1",
+			setupMock: func(tg *mocks.TokenGenerator) {
+				tg.EXPECT().GenerateMFAToken("user-1").
+					Return("mfa-jwt-token", nil)
+			},
+			wantToken: "mfa-jwt-token",
+		},
+		{
+			name:   "generate mfa token fails",
+			userID: "user-1",
+			setupMock: func(tg *mocks.TokenGenerator) {
+				tg.EXPECT().GenerateMFAToken("user-1").
+					Return("", errors.New("sign failed"))
+			},
+			wantErr: "generate mfa token: sign failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokenGen := mocks.NewTokenGenerator(t)
+			refreshRepo := mocks.NewRefreshTokenRepository(t)
+			tt.setupMock(tokenGen)
+
+			svc := New(tokenGen, refreshRepo, time.Minute, time.Hour, "sso", zap.NewNop())
+
+			challenge, err := svc.IssueMFAChallenge(ctx, tt.userID)
+
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+				assert.Nil(t, challenge)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, challenge)
+			assert.Equal(t, tt.wantToken, challenge.MFAToken)
+		})
+	}
+}
+
 func TestService_RefreshTokens(t *testing.T) {
 	ctx := t.Context()
 
