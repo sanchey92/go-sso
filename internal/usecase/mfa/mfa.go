@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"go.uber.org/zap"
 
@@ -113,7 +114,10 @@ func (s *Service) VerifySetup(ctx context.Context, userID, code string) ([]strin
 		return nil, fmt.Errorf("decrypt totp secret: %w", err)
 	}
 
-	valid, err := totp.ValidateCustom(code, string(secret), time.Now(), totp.ValidateOpts{Skew: s.skew})
+	valid, err := totp.ValidateCustom(code, string(secret), time.Now(), totp.ValidateOpts{
+		Skew:   s.skew,
+		Digits: otp.DigitsSix,
+	})
 	if err != nil || !valid {
 		return nil, domainerrors.ErrInvalidTOTPCode
 	}

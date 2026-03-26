@@ -46,6 +46,13 @@ packages:
       TokenIssuer:
       StateStore:
 
+  github.com/sanchey92/sso/internal/usecase/mfa:
+    interfaces:
+      UserGetter:
+      Updater:
+      Encryptor:
+      RecoveryCodeRepo:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth:
     interfaces:
       AuthService:
