@@ -89,3 +89,9 @@ packages:
     interfaces:
       Initiator:
       CallbackHandler:
+
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa:
+    interfaces:
+      TOTPService:
+      TokenValidator:
+      Completer:
