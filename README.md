@@ -82,7 +82,7 @@ proto/                Protobuf definitions (Phase 5)
 | MFA secrets | AES-256-GCM encrypted at rest (random nonce per encryption) |
 | Recovery codes | One-time use, bcrypt hashed, 10 codes per user |
 | Federation | State + PKCE verifier in Redis (TTL 10 min), consume-on-read |
-| Rate limiting | Redis sliding window (login: 10 req / 15 min per IP) |
+| Rate limiting | Redis sliding window (login: 10 req / 15 min, MFA: 5 req / 5 min per IP) |
 | Anti-enumeration | Identical responses for existing / nonexistent emails on reset and magic links |
 | Constant-time | All token and code comparisons via `subtle.ConstantTimeCompare` |
 | Headers | X-Content-Type-Options, X-Frame-Options, HSTS |
@@ -116,7 +116,7 @@ GET  /api/v1/federation/{provider}/authorize  302  Redirect to provider (Google,
 GET  /api/v1/federation/{provider}/callback   200  Exchange code -> auto-provision / link -> tokens
 ```
 
-### MFA (Phase 4 — in progress)
+### MFA
 ```
 POST   /api/v1/auth/mfa/totp/setup          200  Начать TOTP setup (Bearer required)
 POST   /api/v1/auth/mfa/totp/verify-setup   200  Подтвердить TOTP → recovery codes
@@ -167,9 +167,9 @@ E2E тесты: 9 тестов — auto-provisioning, account linking, repeat lo
 
 **Итого: 27 E2E тестов, полное покрытие OAuth 2.0 + Federation flows.**
 
-### Phase 4: MFA + Passwordless — In Progress (7/12)
+### Phase 4: MFA + Passwordless — In Progress (9/12)
 
-MFA инфраструктура, бизнес-логика и auth-интеграция готовы:
+MFA полностью реализована — инфраструктура, бизнес-логика, auth-интеграция и REST endpoints:
 
 - **AES-256-GCM Encryptor** — шифрование TOTP-секретов at rest (random nonce, 32-byte key)
 - **Recovery codes** — таблица `recovery_codes` (FK CASCADE на users), PostgreSQL адаптер (SaveCodes batch insert, GetUnusedByUserID, MarkUsed, DeleteByUserID)
@@ -179,15 +179,15 @@ MFA инфраструктура, бизнес-логика и auth-интегр
 - **JWT MFA token** — EdDSA JWT с purpose=mfa_pending (TTL 5 мин), ValidateMFAToken в jwt adapter
 - **Auth MFA-aware Login** — Login возвращает `LoginResult{MFAChallenge}` при mfa_enabled, обратная совместимость для пользователей без MFA
 - **CompleteMFALogin / CompleteMFARecovery** — второй шаг MFA-логина: валидация MFA-токена → проверка TOTP-кода или recovery code → выпуск токенов
+- **MFA handler** — `handler/mfa/` sub-package с ISP интерфейсами (TOTPService, TokenValidator, Completer), Bearer token extraction, decentralized error mapping
+- **MFA endpoints** — setup, verify-setup, disable (Bearer required) + TOTP verify, recovery verify (с rate limiting 5 req / 5 min per IP)
 - **Интеграционные тесты** — 5 тестов (8 sub-tests) для recovery codes + MFA update
-- **Unit-тесты** — MFA usecase 27 тестов, auth usecase 20 тестов (Login 11 + CompleteMFALogin 4 + CompleteMFARecovery 5), JWT MFA adapter 5 тестов
+- **Unit-тесты** — MFA usecase 27 тестов, auth usecase 20 тестов, JWT MFA adapter 5 тестов, MFA handler тесты (setup + verify)
 
 **Следующие шаги:**
 
 | # | Задача | Описание |
 |---|--------|----------|
-| TASK-043 | Handler: MFA setup endpoints | POST setup, verify-setup, DELETE disable (Bearer) |
-| TASK-044 | Handler: MFA verify + rate limiting | POST totp/verify, recovery/verify (5 req / 5 min) |
 | TASK-045 | Magic Link service | RequestMagicLink (anti-enumeration), VerifyMagicLink |
 | TASK-046 | Handler: Magic Link endpoints | POST request, verify (3 req / 15 min rate limit) |
 | TASK-047 | E2E тесты: MFA + Magic Link | Full TOTP flow, recovery, disable, magic link |

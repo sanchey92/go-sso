@@ -22,6 +22,7 @@ import (
 	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
+	mfahandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	userhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -60,6 +61,7 @@ type usecases struct {
 	client     *client.Service
 	oauth      *oauth.Service
 	federation *federation.Service
+	mfa        *mfa.Service
 }
 
 func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
@@ -88,7 +90,7 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 		return json.Marshal(a.jwtService.GetJWKS())
 	}
 
-	httpServer := initHTTPServer(cfg, uc, jwksProvider, cache, log)
+	httpServer := initHTTPServer(cfg, uc, a, jwksProvider, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -135,6 +137,7 @@ func initUseCases(cfg *config.Config, storage *postgres.Storage, cache *redis.Ca
 		client:     clientSvc,
 		oauth:      oauthSvc,
 		federation: federationSvc,
+		mfa:        mfaSvc,
 	}
 }
 
@@ -200,6 +203,7 @@ func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 func initHTTPServer(
 	cfg *config.Config,
 	uc *usecases,
+	a *adapters,
 	jwksProvider func() ([]byte, error),
 	cache *redis.Cache,
 	log *zap.Logger,
@@ -217,6 +221,7 @@ func initHTTPServer(
 		}),
 		UserInfo:   userinfohandler.NewHandler(uc.user, log),
 		Federation: federationhandler.NewHandler(uc.federation, uc.federation, log),
+		MFA:        mfahandler.New(uc.mfa, a.tokenValidator, uc.auth, log),
 	}
 
 	loginRateLimit := middleware.RateLimit(
@@ -225,6 +230,16 @@ func initHTTPServer(
 		cfg.Security.RateLimit.Login.Window,
 		func(r *http.Request) string {
 			return "rate:login:" + middleware.ExtractIP(r)
+		},
+		log,
+	)
+
+	mfaRateLimit := middleware.RateLimit(
+		cache,
+		cfg.Security.RateLimit.TOTP.MaxAttempts,
+		cfg.Security.RateLimit.TOTP.Window,
+		func(r *http.Request) string {
+			return "rate:mfa:" + middleware.ExtractIP(r)
 		},
 		log,
 	)
@@ -242,5 +257,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, handlers, loginRateLimit, corsCfg, log)
+	}, handlers, loginRateLimit, mfaRateLimit, corsCfg, log)
 }

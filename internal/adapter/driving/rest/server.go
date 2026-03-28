@@ -15,6 +15,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -40,6 +41,7 @@ type Handlers struct {
 	Discovery  *discovery.Handler
 	UserInfo   *userinfo.Handler
 	Federation *federation.Handler
+	MFA        *mfa.Handler
 }
 
 type Server struct {
@@ -47,6 +49,7 @@ type Server struct {
 	router         chi.Router
 	handlers       Handlers
 	loginRateLimit func(http.Handler) http.Handler
+	mfaRateLimit   func(http.Handler) http.Handler
 	corsConfig     middleware.CORSConfig
 	log            *zap.Logger
 }
@@ -55,6 +58,7 @@ func NewServer(
 	cfg *Config,
 	h Handlers,
 	loginRateLimit func(http.Handler) http.Handler,
+	mfaRateLimiter func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
 	log *zap.Logger,
 ) *Server {
@@ -64,6 +68,7 @@ func NewServer(
 		router:         r,
 		handlers:       h,
 		loginRateLimit: loginRateLimit,
+		mfaRateLimit:   mfaRateLimiter,
 		corsConfig:     corsCfg,
 		log:            log,
 	}
@@ -99,6 +104,13 @@ func (s *Server) setupRoutes() {
 		r.Post("/email/verify", s.handlers.User.VerifyEmail)
 		r.Post("/password/reset-request", s.handlers.User.RequestPasswordReset)
 		r.Post("/password/reset", s.handlers.User.ResetPassword)
+
+		r.Post("/mfa/totp/setup", s.handlers.MFA.Setup)
+		r.Post("/mfa/totp/verify-setup", s.handlers.MFA.VerifySetup)
+		r.Delete("/mfa/totp", s.handlers.MFA.Disable)
+
+		r.With(s.mfaRateLimit).Post("/mfa/totp/verify", s.handlers.MFA.VerifyTOTP)
+		r.With(s.mfaRateLimit).Post("/mfa/recovery/verify", s.handlers.MFA.VerifyRecovery)
 	})
 
 	s.router.Route("/api/v1/oauth", func(r chi.Router) {
