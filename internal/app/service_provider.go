@@ -21,6 +21,7 @@ import (
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
+	magiclinkhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink"
 	mfahandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
@@ -32,6 +33,7 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/internal/usecase/client"
 	"github.com/sanchey92/sso/internal/usecase/federation"
+	"github.com/sanchey92/sso/internal/usecase/magiclink"
 	"github.com/sanchey92/sso/internal/usecase/mfa"
 	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
@@ -62,6 +64,7 @@ type usecases struct {
 	oauth      *oauth.Service
 	federation *federation.Service
 	mfa        *mfa.Service
+	magicLink  *magiclink.Service
 }
 
 func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
@@ -129,6 +132,7 @@ func initUseCases(cfg *config.Config, storage *postgres.Storage, cache *redis.Ca
 	clientSvc := client.New(storage, log)
 	oauthSvc := oauth.New(storage, clientSvc, cache, tokenSvc, cfg.OAuth.AuthCodeTTL, log)
 	federationSvc := federation.New(initProviders(cfg.Federation), storage, tokenSvc, cache, cfg.Federation.StateTTL, log)
+	magicLinkSvc := magiclink.New(storage, cache, a.emailSender, tokenSvc, cfg.Auth.MagicLinkTTL, log)
 
 	return &usecases{
 		auth:       authSvc,
@@ -138,6 +142,7 @@ func initUseCases(cfg *config.Config, storage *postgres.Storage, cache *redis.Ca
 		oauth:      oauthSvc,
 		federation: federationSvc,
 		mfa:        mfaSvc,
+		magicLink:  magicLinkSvc,
 	}
 }
 
@@ -222,6 +227,7 @@ func initHTTPServer(
 		UserInfo:   userinfohandler.NewHandler(uc.user, log),
 		Federation: federationhandler.NewHandler(uc.federation, uc.federation, log),
 		MFA:        mfahandler.New(uc.mfa, a.tokenValidator, uc.auth, log),
+		MagicLink:  magiclinkhandler.NewHandler(uc.magicLink, uc.magicLink, log),
 	}
 
 	loginRateLimit := middleware.RateLimit(
@@ -244,6 +250,16 @@ func initHTTPServer(
 		log,
 	)
 
+	magicLinkRateLimit := middleware.RateLimit(
+		cache,
+		cfg.Security.RateLimit.MagicLink.MaxAttempts,
+		cfg.Security.RateLimit.MagicLink.Window,
+		func(r *http.Request) string {
+			return "rate:magic_link:" + middleware.ExtractIP(r)
+		},
+		log,
+	)
+
 	corsCfg := middleware.CORSConfig{
 		AllowOrigins:  cfg.Security.CORS.AllowOrigins,
 		AllowMethods:  cfg.Security.CORS.AllowMethods,
@@ -257,5 +273,5 @@ func initHTTPServer(
 		Port:         cfg.Server.HTTP.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, handlers, loginRateLimit, mfaRateLimit, corsCfg, log)
+	}, handlers, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, log)
 }

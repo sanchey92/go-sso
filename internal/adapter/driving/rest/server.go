@@ -15,6 +15,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
@@ -42,16 +43,18 @@ type Handlers struct {
 	UserInfo   *userinfo.Handler
 	Federation *federation.Handler
 	MFA        *mfa.Handler
+	MagicLink  *magiclink.Handler
 }
 
 type Server struct {
-	httpServer     *http.Server
-	router         chi.Router
-	handlers       Handlers
-	loginRateLimit func(http.Handler) http.Handler
-	mfaRateLimit   func(http.Handler) http.Handler
-	corsConfig     middleware.CORSConfig
-	log            *zap.Logger
+	httpServer         *http.Server
+	router             chi.Router
+	handlers           Handlers
+	loginRateLimit     func(http.Handler) http.Handler
+	mfaRateLimit       func(http.Handler) http.Handler
+	magicLinkRateLimit func(http.Handler) http.Handler
+	corsConfig         middleware.CORSConfig
+	log                *zap.Logger
 }
 
 func NewServer(
@@ -59,18 +62,20 @@ func NewServer(
 	h Handlers,
 	loginRateLimit func(http.Handler) http.Handler,
 	mfaRateLimiter func(http.Handler) http.Handler,
+	magicLinkTateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
 	log *zap.Logger,
 ) *Server {
 	r := chi.NewRouter()
 
 	s := &Server{
-		router:         r,
-		handlers:       h,
-		loginRateLimit: loginRateLimit,
-		mfaRateLimit:   mfaRateLimiter,
-		corsConfig:     corsCfg,
-		log:            log,
+		router:             r,
+		handlers:           h,
+		loginRateLimit:     loginRateLimit,
+		mfaRateLimit:       mfaRateLimiter,
+		magicLinkRateLimit: magicLinkTateLimit,
+		corsConfig:         corsCfg,
+		log:                log,
 	}
 
 	s.setupMiddleware()
@@ -111,6 +116,9 @@ func (s *Server) setupRoutes() {
 
 		r.With(s.mfaRateLimit).Post("/mfa/totp/verify", s.handlers.MFA.VerifyTOTP)
 		r.With(s.mfaRateLimit).Post("/mfa/recovery/verify", s.handlers.MFA.VerifyRecovery)
+
+		r.With(s.magicLinkRateLimit).Post("/magic-link/request", s.handlers.MagicLink.Request)
+		r.Post("/magic-link/verify", s.handlers.MagicLink.Verify)
 	})
 
 	s.router.Route("/api/v1/oauth", func(r chi.Router) {
