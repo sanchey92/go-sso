@@ -226,6 +226,68 @@ func getUserInfo(t *testing.T, accessToken string) map[string]any {
 	return decodeJSON[map[string]any](t, resp)
 }
 
+func postJSONWithAuth(t *testing.T, path string, body any, accessToken string) *http.Response {
+	t.Helper()
+
+	data, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", baseURL+path, bytes.NewReader(data))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	return resp
+}
+
+func deleteJSONWithAuth(t *testing.T, path string, body any, accessToken string) *http.Response {
+	t.Helper()
+
+	data, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("DELETE", baseURL+path, bytes.NewReader(data))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	return resp
+}
+
+// loginUserMFA логинит пользователя и возвращает либо tokens (MFA выключен),
+// либо mfa_token (MFA включён).
+func loginUserMFA(t *testing.T, email, password string) (accessToken, refreshToken, mfaToken string, mfaRequired bool) {
+	t.Helper()
+
+	resp := postJSON(t, "/api/v1/auth/login", map[string]string{
+		"email":    email,
+		"password": password,
+	})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	result := decodeJSON[map[string]any](t, resp)
+
+	if mr, ok := result["mfa_required"].(bool); ok && mr {
+		return "", "", result["mfa_token"].(string), true
+	}
+	return result["access_token"].(string), result["refresh_token"].(string), "", false
+}
+
+func getMagicLinkToken(t *testing.T) string {
+	t.Helper()
+
+	token := testDeps.magicLinkCapture.getToken()
+	require.NotEmpty(t, token, "magic link token not captured")
+
+	return token
+}
+
 func generatePKCE(t *testing.T) (verifier, challenge string) {
 	t.Helper()
 

@@ -24,6 +24,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/sanchey92/sso/internal/adapter/driven/email"
+	"github.com/sanchey92/sso/internal/adapter/driven/encryptor"
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
 	jwtadapter "github.com/sanchey92/sso/internal/adapter/driven/jwt"
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
@@ -35,6 +36,8 @@ import (
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
+	magiclinkhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink"
+	mfahandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
 	oauthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	tokenhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	userhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -44,6 +47,8 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/auth"
 	"github.com/sanchey92/sso/internal/usecase/client"
 	"github.com/sanchey92/sso/internal/usecase/federation"
+	"github.com/sanchey92/sso/internal/usecase/magiclink"
+	"github.com/sanchey92/sso/internal/usecase/mfa"
 	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
@@ -66,8 +71,29 @@ var (
 // testDeps хранит зависимости, которые нужны хелперам (Redis, Storage).
 // В отличие от serviceProvider — это тестовая структура.
 var testDeps struct {
-	storage *postgres.Storage
-	cache   *redis.Cache
+	storage          *postgres.Storage
+	cache            *redis.Cache
+	magicLinkCapture *testMagicLinkCapture
+}
+
+// testMagicLinkCapture captures magic link tokens for E2E tests.
+// email.LogSender logs to zap.NewNop() so tokens are lost — this wrapper saves them.
+type testMagicLinkCapture struct {
+	mu    sync.Mutex
+	token string
+}
+
+func (c *testMagicLinkCapture) SendMagicLinkEmail(_ context.Context, _, token string) error {
+	c.mu.Lock()
+	c.token = token
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *testMagicLinkCapture) getToken() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.token
 }
 
 // Mock OAuth provider servers for federation E2E tests.
@@ -231,6 +257,7 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 	jwtService, err := jwtadapter.NewService(&jwtadapter.Config{
 		Issuer:         "test-sso",
 		AccessTokenTTL: 15 * time.Minute,
+		MFATokenTTL:    5 * time.Minute,
 	})
 	if err != nil {
 		panic("failed to create jwt service: " + err.Error())
@@ -238,6 +265,11 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 
 	h := hasher.New(hasher.DefaultConfig())
 	emailSender := email.NewLogSender(log, "http://localhost:0") // dummy URL
+
+	enc, err := encryptor.New([]byte("test-encryption-key-32-bytes!!!!")) // exactly 32 bytes
+	if err != nil {
+		panic("failed to create encryptor: " + err.Error())
+	}
 
 	httputil.SetMaxBodySize(1 << 20) // 1MB
 
@@ -259,7 +291,12 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 		log,
 	)
 
-	authService := auth.New(storage, h, tokenService, log)
+	mfaService := mfa.New(storage, storage, enc, storage, storage, "test-sso", 1, log)
+
+	mlCapture := &testMagicLinkCapture{}
+	magicLinkService := magiclink.New(storage, cache, mlCapture, tokenService, 15*time.Minute, log)
+
+	authService := auth.New(storage, h, tokenService, tokenService, jwtService, mfaService, mfaService, log)
 	clientService := client.New(storage, log)
 	oauthService := oauth.New(storage, clientService, cache, tokenService, 60*time.Second, log)
 
@@ -300,6 +337,8 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 		}),
 		UserInfo:   userinfohandler.NewHandler(userService, log),
 		Federation: federationhandler.NewHandler(federationService, federationService, log),
+		MFA:        mfahandler.New(mfaService, tokenValidator, authService, log),
+		MagicLink:  magiclinkhandler.NewHandler(magicLinkService, magicLinkService, log),
 	}
 
 	// Rate limiter: в E2E-тестах используем noop (не блокируем)
@@ -318,11 +357,12 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 		Port:         0,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
-	}, handlers, noopRateLimit, corsCfg, log)
+	}, handlers, noopRateLimit, noopRateLimit, noopRateLimit, corsCfg, log)
 
 	// Сохраняем зависимости для хелперов
 	testDeps.storage = storage
 	testDeps.cache = cache
+	testDeps.magicLinkCapture = mlCapture
 
 	// httptest.NewServer использует Handler() — именно для этого мы его добавили
 	return httptest.NewServer(srv.Handler())

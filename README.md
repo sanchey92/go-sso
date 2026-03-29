@@ -29,6 +29,7 @@ internal/
     oauth/            Authorize, ExchangeCode (OAuth 2.0 + PKCE)
     federation/       InitiateOAuth, HandleCallback (Google, GitHub)
     mfa/              SetupTOTP, VerifySetup, VerifyTOTP, VerifyRecoveryCode, DisableTOTP
+    magiclink/        RequestMagicLink, VerifyMagicLink
   adapter/
     driving/rest/     HTTP server (chi), handler sub-packages, middleware
     driven/           PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, AES-256-GCM, Email, OAuth providers
@@ -37,7 +38,7 @@ pkg/
   closer/             graceful shutdown (parallel close, panic recovery, signals)
   logger/             zap wrapper
 test/
-  e2e/                E2E tests (27 тестов, testcontainers)
+  e2e/                E2E tests (37 тестов, testcontainers)
   integration/        integration tests (testcontainers)
 migrations/           SQL (goose)
 proto/                Protobuf definitions (Phase 5)
@@ -82,7 +83,7 @@ proto/                Protobuf definitions (Phase 5)
 | MFA secrets | AES-256-GCM encrypted at rest (random nonce per encryption) |
 | Recovery codes | One-time use, bcrypt hashed, 10 codes per user |
 | Federation | State + PKCE verifier in Redis (TTL 10 min), consume-on-read |
-| Rate limiting | Redis sliding window (login: 10 req / 15 min, MFA: 5 req / 5 min per IP) |
+| Rate limiting | Redis sliding window (login: 10 req / 15 min, MFA: 5 req / 5 min, magic link: 3 req / 15 min per IP) |
 | Anti-enumeration | Identical responses for existing / nonexistent emails on reset and magic links |
 | Constant-time | All token and code comparisons via `subtle.ConstantTimeCompare` |
 | Headers | X-Content-Type-Options, X-Frame-Options, HSTS |
@@ -125,7 +126,7 @@ POST   /api/v1/auth/mfa/totp/verify          200  MFA login — TOTP code
 POST   /api/v1/auth/mfa/recovery/verify      200  MFA login — recovery code
 ```
 
-### Passwordless (Phase 4 — planned)
+### Passwordless
 ```
 POST /api/v1/auth/magic-link/request     200  Запрос magic link (anti-enumeration)
 POST /api/v1/auth/magic-link/verify      200  Верификация magic link → tokens
@@ -165,11 +166,11 @@ Identity Federation через внешних провайдеров.
 
 E2E тесты: 9 тестов — auto-provisioning, account linking, repeat login, unknown provider (404), invalid state (400), missing code/state (400), email not verified (403), provider error (400).
 
-**Итого: 27 E2E тестов, полное покрытие OAuth 2.0 + Federation flows.**
+**Итого Phase 1–3: 27 E2E тестов, полное покрытие OAuth 2.0 + Federation flows.**
 
-### Phase 4: MFA + Passwordless — In Progress (9/12)
+### Phase 4: MFA + Passwordless — Done (12/12)
 
-MFA полностью реализована — инфраструктура, бизнес-логика, auth-интеграция и REST endpoints:
+MFA и Passwordless полностью реализованы — инфраструктура, бизнес-логика, auth-интеграция, REST endpoints и E2E-тесты:
 
 - **AES-256-GCM Encryptor** — шифрование TOTP-секретов at rest (random nonce, 32-byte key)
 - **Recovery codes** — таблица `recovery_codes` (FK CASCADE на users), PostgreSQL адаптер (SaveCodes batch insert, GetUnusedByUserID, MarkUsed, DeleteByUserID)
@@ -181,16 +182,13 @@ MFA полностью реализована — инфраструктура, 
 - **CompleteMFALogin / CompleteMFARecovery** — второй шаг MFA-логина: валидация MFA-токена → проверка TOTP-кода или recovery code → выпуск токенов
 - **MFA handler** — `handler/mfa/` sub-package с ISP интерфейсами (TOTPService, TokenValidator, Completer), Bearer token extraction, decentralized error mapping
 - **MFA endpoints** — setup, verify-setup, disable (Bearer required) + TOTP verify, recovery verify (с rate limiting 5 req / 5 min per IP)
+- **Magic Link usecase** — RequestMagicLink (SHA-256 hash в Redis, anti-enumeration), VerifyMagicLink (single-use, consume-on-read)
+- **Magic Link handler** — `handler/magiclink/` sub-package с ISP интерфейсами (LinkRequester, LinkVerifier), rate limiting (3 req / 15 min per IP)
 - **Интеграционные тесты** — 5 тестов (8 sub-tests) для recovery codes + MFA update
-- **Unit-тесты** — MFA usecase 27 тестов, auth usecase 20 тестов, JWT MFA adapter 5 тестов, MFA handler тесты (setup + verify)
+- **Unit-тесты** — MFA usecase 27 тестов, auth usecase 20 тестов, JWT MFA adapter 5 тестов, MFA handler тесты, Magic Link handler тесты
+- **E2E тесты** — 10 новых тестов: TOTP full flow, recovery flow (single-use), disable flow, error cases (wrong code, already enabled, verify-setup wrong code), magic link full flow (single-use), anti-enumeration, invalid token
 
-**Следующие шаги:**
-
-| # | Задача | Описание |
-|---|--------|----------|
-| TASK-045 | Magic Link service | RequestMagicLink (anti-enumeration), VerifyMagicLink |
-| TASK-046 | Handler: Magic Link endpoints | POST request, verify (3 req / 15 min rate limit) |
-| TASK-047 | E2E тесты: MFA + Magic Link | Full TOTP flow, recovery, disable, magic link |
+**Итого: 37 E2E тестов, полное покрытие OAuth 2.0 + Federation + MFA + Magic Link flows.**
 
 ### Phase 5: gRPC + Observability — Planned (0/11)
 
