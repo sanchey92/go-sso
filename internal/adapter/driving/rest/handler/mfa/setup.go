@@ -3,7 +3,7 @@ package mfa
 import (
 	"net/http"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/httputil"
 )
 
 type setupResponse struct {

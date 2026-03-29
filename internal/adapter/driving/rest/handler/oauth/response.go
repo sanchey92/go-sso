@@ -3,7 +3,7 @@ package oauth
 import (
 	"net/http"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/httputil"
 	"github.com/sanchey92/sso/internal/domain/model"
 )
 

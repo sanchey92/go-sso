@@ -102,3 +102,8 @@ packages:
       TOTPService:
       TokenValidator:
       Completer:
+
+  github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink:
+    interfaces:
+      LinkRequester:
+      LinkVerifier:

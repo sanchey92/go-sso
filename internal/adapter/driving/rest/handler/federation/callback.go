@@ -6,7 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 
-	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/httputil"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/httputil"
 )
 
 type tokenResponse struct {
