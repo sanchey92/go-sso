@@ -38,6 +38,7 @@ auth:
   access_token_ttl: 15m # override: SSO_AUTH_ACCESS_TOKEN_TTL
   refresh_token_ttl: 168h # override: SSO_AUTH_REFRESH_TOKEN_TTL
   mfa_token_ttl: 5s # override: SSO_AUTH_REFRESH_TOKEN_TTL
+  magic_link_ttl: 15m # override: SSO_MAGIC_LINK_TTL
   issuer: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_AUTH_ISSUER
   audience: "sso" # override: SSO_AUTH_AUDIENCE
   jwt_signing_algorithm: "EdDSA" # override: SSO_AUTH_JWT_SIGNING_ALGORITHM

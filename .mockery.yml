@@ -58,6 +58,13 @@ packages:
       RecoveryCodeRepo:
       RecoveryReader:
 
+  github.com/sanchey92/sso/internal/usecase/magiclink:
+    interfaces:
+      UserGetter:
+      CacheStore:
+      LinkSender:
+      TokenIssuer:
+
   github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth:
     interfaces:
       AuthService:

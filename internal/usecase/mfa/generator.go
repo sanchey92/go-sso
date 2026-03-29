@@ -10,7 +10,7 @@ import (
 
 const alphanumeric = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func generateRecoveryCodes(count int) (raw []string, hashes []string, err error) {
+func generateRecoveryCodes(count int) (raw, hashes []string, err error) {
 	raw = make([]string, 0, count)
 	hashes = make([]string, 0, count)
 

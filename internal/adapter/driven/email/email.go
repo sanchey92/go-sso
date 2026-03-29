@@ -33,3 +33,11 @@ func (s *LogSender) SendPasswordResetEmail(_ context.Context, toEmail, token str
 	)
 	return nil
 }
+
+func (s *LogSender) SendMagicLinkEmail(_ context.Context, toEmail, token string) error {
+	s.log.Info("magic link email",
+		zap.String("to", toEmail),
+		zap.String("magic_link_url", s.baseURL+"/api/v1/auth/magic-link/verify?token="+token),
+	)
+	return nil
+}
