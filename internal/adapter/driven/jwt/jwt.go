@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
+	"github.com/sanchey92/sso/internal/domain/model"
 	"github.com/sanchey92/sso/pkg/crypto"
 )
 
@@ -69,7 +70,7 @@ func (s *Service) GenerateToken(userID, audience string) (string, error) {
 	return signed, nil
 }
 
-func (s *Service) ValidateToken(tokenStr string) (*Claims, error) {
+func (s *Service) ValidateToken(tokenStr string) (*model.TokenClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodEdDSA {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -86,6 +87,7 @@ func (s *Service) ValidateToken(tokenStr string) (*Claims, error) {
 		}
 		return key.PublicKey, nil
 	})
+
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, domainerrors.ErrTokenExpired
@@ -96,14 +98,18 @@ func (s *Service) ValidateToken(tokenStr string) (*Claims, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid token claims")
 	}
+
 	var aud string
 	if len(claims.Audience) > 0 {
 		aud = claims.Audience[0]
 	}
-	return &Claims{
-		Subject:  claims.Subject,
-		Issuer:   claims.Issuer,
-		Audience: aud,
+
+	return &model.TokenClaims{
+		Subject:   claims.Subject,
+		Issuer:    claims.Issuer,
+		Audience:  aud,
+		ExpiresAt: claims.ExpiresAt.Time, // NEW
+		IssuedAt:  claims.IssuedAt.Time,  // NEW
 	}, nil
 }
 
