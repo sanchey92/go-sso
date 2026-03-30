@@ -15,6 +15,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	"github.com/sanchey92/sso/internal/adapter/driven/provider"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
+	grpcserver "github.com/sanchey92/sso/internal/adapter/driving/grpc"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
@@ -46,6 +47,7 @@ type serviceProvider struct {
 	storage    *postgres.Storage
 	cache      *redis.Cache
 	httpServer *rest.Server
+	grpcServer *grpcserver.Server
 }
 
 type adapters struct {
@@ -94,12 +96,14 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	}
 
 	httpServer := initHTTPServer(cfg, uc, a, jwksProvider, cache, log)
+	grpcSrv := initGRPCServer(&cfg.Server.GRPC, log)
 
 	return &serviceProvider{
 		log:        log,
 		storage:    storage,
 		cache:      cache,
 		httpServer: httpServer,
+		grpcServer: grpcSrv,
 	}, nil
 }
 
@@ -274,4 +278,11 @@ func initHTTPServer(
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
 	}, handlers, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, log)
+}
+
+func initGRPCServer(cfg *config.GRPCServerConfig, log *zap.Logger) *grpcserver.Server {
+	return grpcserver.NewServer(&grpcserver.Config{
+		Host: cfg.Host,
+		Port: cfg.Port,
+	}, log)
 }

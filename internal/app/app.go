@@ -27,6 +27,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	c := closer.New(sp.log, cfg.Server.HTTP.ShutdownTimeout, syscall.SIGINT, syscall.SIGTERM)
 
 	c.AddFunc(sp.httpServer.Stop)
+	c.AddFunc(sp.grpcServer.Stop)
 	c.AddFunc(func(_ context.Context) error { return sp.cache.Close() })
 	c.AddFunc(func(_ context.Context) error { sp.storage.Close(); return nil })
 
@@ -41,6 +42,12 @@ func (a *App) Run() {
 	go func() {
 		if err := a.serviceProvider.httpServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			a.log.Error("http server error", zap.Error(err))
+		}
+	}()
+
+	go func() {
+		if err := a.serviceProvider.grpcServer.Start(); err != nil {
+			a.log.Error("grpc server error", zap.Error(err))
 		}
 	}()
 
