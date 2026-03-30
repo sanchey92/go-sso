@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package sso.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/sanchey92/sso/gen/sso/v1;ssov1";
+
+service SSOInternalService {
+  rpc IntrospectToken(IntrospectTokenRequest) returns (IntrospectTokenResponse);
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc BatchValidateTokens(BatchValidateTokensRequest) returns (BatchValidateTokensResponse);
+}
+
+message IntrospectTokenRequest {
+  string token = 1;
+}
+
+message IntrospectTokenResponse {
+  bool active = 1;
+  string subject = 2;
+  string issuer = 3;
+  string audience = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  google.protobuf.Timestamp issued_at = 6;
+  repeated string scopes = 7;
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string email = 3;
+  bool email_verified = 4;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  string user_id = 1;
+  string email = 2;
+  bool email_verified = 3;
+  bool mfa_enabled = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message BatchValidateTokensRequest {
+  repeated string tokens = 1;
+}
+
+message BatchValidateTokensResponse {
+  repeated BatchValidateResult results = 1;
+}
+
+message BatchValidateResult {
+  string token = 1;
+  bool valid = 2;
+  string user_id = 3;
+}

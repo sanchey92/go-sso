@@ -9,6 +9,9 @@ vars:
   MOCKERY_VERSION: 'v2.53.3'
   GCI_VERSION: 'v0.13.6'
   GOFUMPT_VERSION: 'v0.8.0'
+  BUF_VERSION: 'v1.50.0'
+  PROTOC_GEN_GO_VERSION: 'v1.36.6'
+  PROTOC_GEN_GO_GRPC_VERSION: 'v1.5.1'
 
   BIN_DIR: '{{.ROOT_DIR}}/bin'
   GOLANGCI_LINT: '{{.BIN_DIR}}/golangci-lint'
@@ -16,6 +19,9 @@ vars:
   MOCKERY: '{{.BIN_DIR}}/mockery'
   GCI: '{{.BIN_DIR}}/gci'
   GOFUMPT: '{{.BIN_DIR}}/gofumpt'
+  BUF: '{{.BIN_DIR}}/buf'
+  PROTOC_GEN_GO: '{{.BIN_DIR}}/protoc-gen-go'
+  PROTOC_GEN_GO_GRPC: '{{.BIN_DIR}}/protoc-gen-go-grpc'
 
 tasks:
   build:
@@ -75,6 +81,8 @@ tasks:
       - task: install:goose
       - task: install:mockery
       - task: install-formatters
+      - task: install:buf
+      - task: install:protoc-plugins
 
   install-formatters:
     desc: "install formatters"
@@ -109,6 +117,54 @@ tasks:
       - GOBIN={{.BIN_DIR}} go install github.com/vektra/mockery/v2@{{.MOCKERY_VERSION}}
     status:
       - test -x {{.MOCKERY}}
+
+  install:buf:
+    desc: install buf CLI
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOBIN={{.BIN_DIR}} go install github.com/bufbuild/buf/cmd/buf@{{.BUF_VERSION}}
+    status:
+      - test -x {{.BUF}}
+
+  install:protoc-plugins:
+    desc: install protoc-gen-go and protoc-gen-go-grpc
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - GOBIN={{.BIN_DIR}} go install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO_VERSION}}
+      - GOBIN={{.BIN_DIR}} go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC_VERSION}}
+    status:
+      - test -x {{.PROTOC_GEN_GO}}
+      - test -x {{.PROTOC_GEN_GO_GRPC}}
+
+  proto:gen:
+    desc: generate Go code from proto definitions
+    deps:
+      - install:buf
+      - install:protoc-plugins
+    cmds:
+      - rm -rf gen/
+      - PATH={{.BIN_DIR}}:$PATH {{.BUF}} generate proto --template proto/buf.gen.yaml
+
+  proto:lint:
+    desc: lint proto files
+    deps:
+      - install:buf
+    cmds:
+      - '{{.BUF}} lint proto'
+
+  proto:format:
+    desc: format proto files
+    deps:
+      - install:buf
+    cmds:
+      - '{{.BUF}} format -w proto'
+
+  proto:breaking:
+    desc: check for breaking changes against main branch
+    deps:
+      - install:buf
+    cmds:
+      - '{{.BUF}} breaking proto --against .git#subdir=proto'
 
   lint:
     desc: run golangci-lint
