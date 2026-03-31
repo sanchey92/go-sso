@@ -107,3 +107,9 @@ packages:
     interfaces:
       LinkRequester:
       LinkVerifier:
+
+  github.com/sanchey92/sso/internal/adapter/driving/grpc/handler:
+    interfaces:
+      TokenIntrospector:
+      UserGetter:
+      IntrospectionCache:
