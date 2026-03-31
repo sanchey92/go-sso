@@ -90,7 +90,6 @@ func TestIntrospectToken(t *testing.T) {
 				data, _ := json.Marshal(cached)
 				ic.EXPECT().Get(mock.Anything, mock.Anything).
 					Return(string(data), nil)
-				// TokenIntrospector.ValidateToken NOT called — cache hit
 			},
 			wantActive:  true,
 			wantSubject: "user-456",
@@ -179,6 +178,125 @@ func TestValidateToken(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantValid, resp.GetValid())
+		})
+	}
+}
+
+func TestGetUser(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+
+	tests := []struct {
+		name      string
+		userID    string
+		setup     func(*mocks.UserGetter)
+		wantCode  codes.Code
+		wantEmail string
+	}{
+		{
+			name:   "existing user",
+			userID: "user-1",
+			setup: func(ug *mocks.UserGetter) {
+				ug.EXPECT().GetByID(mock.Anything, "user-1").
+					Return(&model.User{
+						ID:            "user-1",
+						Email:         "alice@example.com",
+						EmailVerified: true,
+						MFAEnabled:    false,
+						Status:        model.UserStatusActive,
+						CreatedAt:     now,
+					}, nil)
+			},
+			wantEmail: "alice@example.com",
+		},
+		{
+			name:   "user not found",
+			userID: "nonexistent",
+			setup: func(ug *mocks.UserGetter) {
+				ug.EXPECT().GetByID(mock.Anything, "nonexistent").
+					Return(nil, domainerrors.ErrUserNotFound)
+			},
+			wantCode: codes.NotFound,
+		},
+		{
+			name:     "empty user_id",
+			userID:   "",
+			setup:    func(_ *mocks.UserGetter) {},
+			wantCode: codes.InvalidArgument,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, _, ug, _ := newTestHandler(t)
+			tt.setup(ug)
+
+			resp, err := h.GetUser(t.Context(), &ssov1.GetUserRequest{
+				UserId: tt.userID,
+			})
+
+			if tt.wantCode != codes.OK {
+				require.Error(t, err)
+				st, _ := status.FromError(err)
+				assert.Equal(t, tt.wantCode, st.Code())
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantEmail, resp.GetEmail())
+		})
+	}
+}
+
+func TestBatchValidateTokens(t *testing.T) {
+	tests := []struct {
+		name      string
+		tokens    []string
+		setup     func(*mocks.TokenIntrospector)
+		wantValid int
+		wantTotal int
+	}{
+		{
+			name:   "mixed valid and invalid",
+			tokens: []string{"good-1", "bad", "good-2"},
+			setup: func(ti *mocks.TokenIntrospector) {
+				ti.EXPECT().ValidateToken("good-1").
+					Return(&model.TokenClaims{Subject: "u1"}, nil)
+				ti.EXPECT().ValidateToken("bad").
+					Return(nil, domainerrors.ErrInvalidToken)
+				ti.EXPECT().ValidateToken("good-2").
+					Return(&model.TokenClaims{Subject: "u2"}, nil)
+			},
+			wantValid: 2,
+			wantTotal: 3,
+		},
+		{
+			name:      "empty request",
+			tokens:    nil,
+			setup:     func(_ *mocks.TokenIntrospector) {},
+			wantValid: 0,
+			wantTotal: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, ti, _, _ := newTestHandler(t)
+			tt.setup(ti)
+
+			resp, err := h.BatchValidateTokens(t.Context(), &ssov1.BatchValidateTokensRequest{
+				Tokens: tt.tokens,
+			})
+
+			require.NoError(t, err)
+			assert.Len(t, resp.GetResults(), tt.wantTotal)
+
+			valid := 0
+			for _, r := range resp.GetResults() {
+				if r.GetValid() {
+					valid++
+				}
+			}
+			assert.Equal(t, tt.wantValid, valid)
 		})
 	}
 }

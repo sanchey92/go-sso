@@ -27,5 +27,5 @@ func (h *Handler) ValidateToken(
 		}
 		return nil, status.Error(codes.Internal, "internal error")
 	}
-	return userToProto(user), nil
+	return validateTokenToProto(user), nil
 }

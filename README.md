@@ -32,6 +32,7 @@ internal/
     magiclink/        RequestMagicLink, VerifyMagicLink
   adapter/
     driving/rest/     HTTP server (chi), handler sub-packages, middleware
+    driving/grpc/     gRPC server (internal API), handler, interceptors
     driven/           PostgreSQL (pgx), Redis, JWT (EdDSA), Argon2id, AES-256-GCM, Email, OAuth providers
 pkg/
   crypto/             token generation, SHA-256 hashing, PKCE, UUID
@@ -68,7 +69,7 @@ proto/                Protobuf definitions (Phase 5)
 | Tracing | OpenTelemetry (planned) |
 | Linting | golangci-lint v2 (gocritic, gosec, exhaustive, errcheck) |
 | Testing | testify + mockery + testcontainers-go |
-| Proto | buf |
+| gRPC | google.golang.org/grpc, buf (proto generation) |
 | Tasks | Taskfile |
 | Containers | Docker, docker-compose |
 
@@ -139,6 +140,17 @@ GET  /.well-known/jwks.json               200  JWKS (EdDSA public keys)
 GET  /healthz                             200  Health check
 ```
 
+### gRPC (Internal API)
+
+Internal service-to-service API (`SSOInternalService`). Не для внешних клиентов — для микросервисов внутри инфраструктуры.
+
+```
+IntrospectToken       Token → active, subject, issuer, audience, expires_at (+ Redis cache)
+ValidateToken         Token → valid, user_id, email, email_verified (user lookup)
+GetUser               user_id → user data (email, mfa_enabled, status, created_at)
+BatchValidateTokens   []tokens → []results (parallel, errgroup limit 10)
+```
+
 ## Progress
 
 ### Phase 1: Foundation — Done (22/22)
@@ -190,17 +202,26 @@ MFA и Passwordless полностью реализованы — инфраст
 
 **Итого: 37 E2E тестов, полное покрытие OAuth 2.0 + Federation + MFA + Magic Link flows.**
 
-### Phase 5: gRPC + Observability — Planned (0/11)
+### Phase 5: gRPC + Observability — In Progress (4/11)
 
-| Feature | Задачи | Description |
-|---------|--------|------------|
-| Protobuf + gRPC server | TASK-048, 049 | buf setup, proto definitions, server scaffold |
-| gRPC handlers | TASK-050, 051 | IntrospectToken (+ cache), ValidateToken, GetUser, BatchValidate |
-| Interceptors | TASK-052 | Auth (API key), Logging, Reflection |
-| Prometheus | TASK-053, 054 | HTTP/gRPC metrics middleware, DB/Redis metrics, /metrics endpoint |
-| OpenTelemetry | TASK-055, 056 | TracerProvider, HTTP/gRPC/DB/Redis tracing |
-| Health checks | TASK-057 | /healthz, /readyz (PG + Redis), gRPC Health service |
-| E2E тесты | TASK-058 | gRPC introspection, validation, batch, auth interceptor |
+gRPC Internal API для service-to-service коммуникации:
+
+- **buf + Protobuf** — `proto/sso/v1/sso.proto`, `SSOInternalService` (4 RPC), `buf generate`
+- **gRPC server scaffold** — отдельный listener, wiring в `app.go`, graceful shutdown
+- **IntrospectToken** — JWT валидация → proto response, Redis cache (SHA-256 key, JSON value, configurable TTL)
+- **ValidateToken** — JWT валидация → user lookup → полная информация (user_id, email, email_verified)
+- **GetUser** — user_id → user data (email, mfa_enabled, status, created_at), proper gRPC status codes
+- **BatchValidateTokens** — параллельная валидация через `errgroup.SetLimit(10)`, один невалидный токен не ломает batch
+
+| Feature | Задачи | Status |
+|---------|--------|--------|
+| Protobuf + gRPC server | TASK-048, 049 | Done |
+| gRPC handlers | TASK-050, 051 | Done |
+| Interceptors | TASK-052 | Planned |
+| Prometheus | TASK-053, 054 | Planned |
+| OpenTelemetry | TASK-055, 056 | Planned |
+| Health checks | TASK-057 | Planned |
+| E2E тесты | TASK-058 | Planned |
 
 ### Phase 6: Hardening — Planned (0/7)
 

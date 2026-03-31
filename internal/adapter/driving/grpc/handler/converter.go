@@ -32,11 +32,22 @@ func cacheToProto(c *cachedIntrospection) *ssov1.IntrospectTokenResponse {
 	return resp
 }
 
-func userToProto(user *model.User) *ssov1.ValidateTokenResponse {
+func validateTokenToProto(user *model.User) *ssov1.ValidateTokenResponse {
 	return &ssov1.ValidateTokenResponse{
 		Valid:         true,
 		UserId:        user.ID,
 		Email:         user.Email,
 		EmailVerified: user.EmailVerified,
+	}
+}
+
+func userToProto(user *model.User) *ssov1.GetUserResponse {
+	return &ssov1.GetUserResponse{
+		UserId:        user.ID,
+		Email:         user.Email,
+		EmailVerified: user.EmailVerified,
+		MfaEnabled:    user.MFAEnabled,
+		Status:        string(user.Status),
+		CreatedAt:     timestamppb.New(user.CreatedAt),
 	}
 }
