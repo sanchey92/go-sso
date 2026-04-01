@@ -14,7 +14,7 @@ server:
     max_body_size: 1048576 # override: SSO_SERVER_HTTP_MAX_BODY_SIZE
   grpc:
     host: "0.0.0.0"
-    port: 9090    # override: SSO_SERVER_GRPC_PORT
+    port: 50051    # override: SSO_SERVER_GRPC_PORT
     api_key: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_SERVER_GRPC_API_KEY
 
 database:

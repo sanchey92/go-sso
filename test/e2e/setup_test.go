@@ -355,6 +355,7 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 	srv := rest.NewServer(&rest.Config{
 		Host:         "127.0.0.1",
 		Port:         0,
+		MetricsPort:  0,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}, handlers, noopRateLimit, noopRateLimit, noopRateLimit, corsCfg, log)

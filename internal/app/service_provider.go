@@ -44,6 +44,7 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
 	"github.com/sanchey92/sso/pkg/logger"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 type serviceProvider struct {
@@ -93,13 +94,14 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 
 	httputil.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
 
+	m := metrics.New()
 	uc := initUseCases(cfg, storage, cache, a, log)
 
 	jwksProvider := func() ([]byte, error) {
 		return json.Marshal(a.jwtService.GetJWKS())
 	}
 
-	httpServer := initHTTPServer(cfg, uc, a, jwksProvider, cache, log)
+	httpServer := initHTTPServer(cfg, m, uc, a, jwksProvider, cache, log)
 	grpcSrv := initGRPCServer(&cfg.Server.GRPC, cfg.Observability.Log.Level, a, storage, cache, log)
 
 	return &serviceProvider{
@@ -215,6 +217,7 @@ func initJWT(cfg *config.AuthConfig) (*jwtadapter.Service, error) {
 
 func initHTTPServer(
 	cfg *config.Config,
+	m *metrics.Metrics,
 	uc *usecases,
 	a *adapters,
 	jwksProvider func() ([]byte, error),
@@ -279,9 +282,10 @@ func initHTTPServer(
 	return rest.NewServer(&rest.Config{
 		Host:         cfg.Server.HTTP.Host,
 		Port:         cfg.Server.HTTP.Port,
+		MetricsPort:  cfg.Observability.Metrics.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, handlers, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, log)
+	}, handlers, m, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, log)
 }
 
 func initGRPCServer(

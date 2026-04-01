@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
@@ -22,11 +24,13 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/userinfo"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 type Config struct {
 	Host         string
 	Port         int
+	MetricsPort  int
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
@@ -48,7 +52,9 @@ type Handlers struct {
 
 type Server struct {
 	httpServer         *http.Server
+	metricsServer      *http.Server
 	router             chi.Router
+	metrics            *metrics.Metrics
 	handlers           Handlers
 	loginRateLimit     func(http.Handler) http.Handler
 	mfaRateLimit       func(http.Handler) http.Handler
@@ -60,6 +66,7 @@ type Server struct {
 func NewServer(
 	cfg *Config,
 	h Handlers,
+	metrics *metrics.Metrics,
 	loginRateLimit func(http.Handler) http.Handler,
 	mfaRateLimiter func(http.Handler) http.Handler,
 	magicLinkTateLimit func(http.Handler) http.Handler,
@@ -71,6 +78,7 @@ func NewServer(
 	s := &Server{
 		router:             r,
 		handlers:           h,
+		metrics:            metrics,
 		loginRateLimit:     loginRateLimit,
 		mfaRateLimit:       mfaRateLimiter,
 		magicLinkRateLimit: magicLinkTateLimit,
@@ -88,12 +96,20 @@ func NewServer(
 		WriteTimeout: cfg.WriteTimeout,
 	}
 
+	metricsRouter := chi.NewRouter()
+	metricsRouter.Handle("/metrics", promhttp.Handler())
+	s.metricsServer = &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", cfg.Host, cfg.MetricsPort),
+		Handler: metricsRouter,
+	}
+
 	return s
 }
 
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Recovery(s.log))
+	s.router.Use(middleware.MetricsMiddleware(s.metrics))
 	s.router.Use(middleware.Logging(s.log))
 	s.router.Use(middleware.CORS(s.corsConfig))
 }
@@ -148,18 +164,47 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) Start() error {
 	s.log.Info("starting HTTP server", zap.String("addr", s.httpServer.Addr))
-	if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("http server: %w", err)
-	}
-	return nil
+	s.log.Info("starting metrics server", zap.String("addr", s.metricsServer.Addr))
+
+	g := errgroup.Group{}
+
+	g.Go(func() error {
+		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("http server: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := s.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("metrics server: %w", err)
+		}
+		return nil
+	})
+
+	return g.Wait()
 }
 
 func (s *Server) Stop(ctx context.Context) error {
 	s.log.Info("stopping HTTP server")
-	if err := s.httpServer.Shutdown(ctx); err != nil {
-		return fmt.Errorf("stop server: %w", err)
-	}
-	return nil
+
+	g := errgroup.Group{}
+
+	g.Go(func() error {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			return fmt.Errorf("stop http server: %w", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := s.metricsServer.Shutdown(ctx); err != nil {
+			return fmt.Errorf("stop metrics server: %w", err)
+		}
+		return nil
+	})
+
+	return g.Wait()
 }
 
 func (s *Server) Handler() http.Handler {

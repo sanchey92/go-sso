@@ -24,6 +24,33 @@ vars:
   PROTOC_GEN_GO_GRPC: '{{.BIN_DIR}}/protoc-gen-go-grpc'
 
 tasks:
+  dev:up:
+    desc: start postgres and redis in background
+    cmds:
+      - docker compose up postgres redis -d
+
+  dev:down:
+    desc: stop postgres and redis
+    cmds:
+      - docker compose down
+
+  dev:run:
+    desc: run application locally
+    cmds:
+      - go run ./cmd/sso/main.go
+
+  dev:start:
+    desc: start dependencies, run migrations and run application
+    cmds:
+      - task: dev:up
+      - task: migrate:up
+      - task: dev:run
+
+  dev:logs:
+    desc: tail logs of postgres and redis
+    cmds:
+      - docker compose logs -f postgres redis
+
   build:
     desc: build the application
     cmds:

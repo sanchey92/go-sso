@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
-	"net/http"
 	"syscall"
 
 	"go.uber.org/zap"
@@ -40,7 +38,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 func (a *App) Run() {
 	go func() {
-		if err := a.serviceProvider.httpServer.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := a.serviceProvider.httpServer.Start(); err != nil {
 			a.log.Error("http server error", zap.Error(err))
 		}
 	}()
@@ -53,7 +51,7 @@ func (a *App) Run() {
 
 	a.log.Info("application started")
 
-	if err := a.closer.CloseAll(context.Background()); err != nil {
+	if err := a.closer.Wait(); err != nil {
 		a.log.Error("shutdown completed with errors", zap.Error(err))
 	}
 
