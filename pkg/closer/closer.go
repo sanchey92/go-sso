@@ -79,6 +79,11 @@ func (c *Closer) handleSignals(signals ...os.Signal) {
 	}
 }
 
+func (c *Closer) Wait() error {
+	<-c.done
+	return c.err
+}
+
 func (c *Closer) CloseAll(ctx context.Context) error {
 	c.once.Do(func() {
 		defer close(c.done)
