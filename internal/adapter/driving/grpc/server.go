@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 type Config struct {
@@ -20,9 +21,9 @@ type Server struct {
 	log        *zap.Logger
 }
 
-func NewServer(cfg *Config, log *zap.Logger) *Server {
+func NewServer(cfg *Config, log *zap.Logger, opts ...grpc.ServerOption) *Server {
 	return &Server{
-		grpcServer: grpc.NewServer(),
+		grpcServer: grpc.NewServer(opts...),
 		addr:       fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		log:        log,
 	}
@@ -30,6 +31,11 @@ func NewServer(cfg *Config, log *zap.Logger) *Server {
 
 func (s *Server) RegisterService(desc *grpc.ServiceDesc, impl any) {
 	s.grpcServer.RegisterService(desc, impl)
+}
+
+func (s *Server) EnableReflection() {
+	reflection.Register(s.grpcServer)
+	s.log.Info("gRPC reflection enabled")
 }
 
 func (s *Server) Start() error {
@@ -47,11 +53,6 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Stop performs graceful shutdown of the gRPC server.
-// It attempts GracefulStop first, which waits for in-flight RPCs to complete.
-// If the context expires before GracefulStop finishes, it falls back to Stop()
-// which forcefully closes all connections. The forced Stop also unblocks
-// GracefulStop in the background goroutine, so no goroutine leak occurs.
 func (s *Server) Stop(ctx context.Context) error {
 	s.log.Info("stopping gRPC server")
 

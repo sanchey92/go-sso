@@ -33,9 +33,10 @@ type HTTPServerConfig struct {
 }
 
 type GRPCServerConfig struct {
-	Host   string `yaml:"host"    env:"SSO_SERVER_GRPC_HOST"    env-default:"0.0.0.0"`
-	Port   int    `yaml:"port"    env:"SSO_SERVER_GRPC_PORT"    env-default:"9090"`
-	APIKey string `yaml:"api_key" env:"SSO_SERVER_GRPC_API_KEY" env-required:"true"`
+	Host                  string        `yaml:"host"                   env:"SSO_SERVER_GRPC_HOST"                   env-default:"0.0.0.0"`
+	Port                  int           `yaml:"port"                   env:"SSO_SERVER_GRPC_PORT"                   env-default:"9090"`
+	APIKey                string        `yaml:"api_key"                env:"SSO_SERVER_GRPC_API_KEY"                env-required:"true"`
+	IntrospectionCacheTTL time.Duration `yaml:"introspection_cache_ttl" env:"SSO_SERVER_GRPC_INTROSPECTION_CACHE_TTL" env-default:"5m"`
 }
 
 type DatabaseConfig struct {

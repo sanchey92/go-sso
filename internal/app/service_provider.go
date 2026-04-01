@@ -7,7 +7,9 @@ import (
 	"net/http"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
+	ssov1 "github.com/sanchey92/sso/gen/sso/v1"
 	"github.com/sanchey92/sso/internal/adapter/driven/email"
 	"github.com/sanchey92/sso/internal/adapter/driven/encryptor"
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
@@ -16,6 +18,8 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driven/provider"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
 	grpcserver "github.com/sanchey92/sso/internal/adapter/driving/grpc"
+	grpchandler "github.com/sanchey92/sso/internal/adapter/driving/grpc/handler"
+	"github.com/sanchey92/sso/internal/adapter/driving/grpc/interceptor"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
@@ -96,7 +100,7 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	}
 
 	httpServer := initHTTPServer(cfg, uc, a, jwksProvider, cache, log)
-	grpcSrv := initGRPCServer(&cfg.Server.GRPC, log)
+	grpcSrv := initGRPCServer(&cfg.Server.GRPC, cfg.Observability.Log.Level, a, storage, cache, log)
 
 	return &serviceProvider{
 		log:        log,
@@ -280,9 +284,28 @@ func initHTTPServer(
 	}, handlers, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, log)
 }
 
-func initGRPCServer(cfg *config.GRPCServerConfig, log *zap.Logger) *grpcserver.Server {
-	return grpcserver.NewServer(&grpcserver.Config{
+func initGRPCServer(
+	cfg *config.GRPCServerConfig,
+	logLevel string,
+	a *adapters,
+	storage *postgres.Storage,
+	cache *redis.Cache,
+	log *zap.Logger,
+) *grpcserver.Server {
+	srv := grpcserver.NewServer(&grpcserver.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
-	}, log)
+	}, log, grpc.ChainUnaryInterceptor(
+		interceptor.AuthInterceptor(cfg.APIKey),
+		interceptor.LoggingInterceptor(log),
+	))
+
+	h := grpchandler.New(a.jwtService, storage, cache, cfg.IntrospectionCacheTTL, log)
+	srv.RegisterService(&ssov1.SSOInternalService_ServiceDesc, h)
+
+	if logLevel == "debug" {
+		srv.EnableReflection()
+	}
+
+	return srv
 }

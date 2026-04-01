@@ -85,6 +85,7 @@ proto/                Protobuf definitions (Phase 5)
 | Recovery codes | One-time use, bcrypt hashed, 10 codes per user |
 | Federation | State + PKCE verifier in Redis (TTL 10 min), consume-on-read |
 | Rate limiting | Redis sliding window (login: 10 req / 15 min, MFA: 5 req / 5 min, magic link: 3 req / 15 min per IP) |
+| gRPC API key | Internal API protected by `x-api-key` header (constant-time), health checks bypassed |
 | Anti-enumeration | Identical responses for existing / nonexistent emails on reset and magic links |
 | Constant-time | All token and code comparisons via `subtle.ConstantTimeCompare` |
 | Headers | X-Content-Type-Options, X-Frame-Options, HSTS |
@@ -202,7 +203,7 @@ MFA и Passwordless полностью реализованы — инфраст
 
 **Итого: 37 E2E тестов, полное покрытие OAuth 2.0 + Federation + MFA + Magic Link flows.**
 
-### Phase 5: gRPC + Observability — In Progress (4/11)
+### Phase 5: gRPC + Observability — In Progress (5/11)
 
 gRPC Internal API для service-to-service коммуникации:
 
@@ -212,12 +213,14 @@ gRPC Internal API для service-to-service коммуникации:
 - **ValidateToken** — JWT валидация → user lookup → полная информация (user_id, email, email_verified)
 - **GetUser** — user_id → user data (email, mfa_enabled, status, created_at), proper gRPC status codes
 - **BatchValidateTokens** — параллельная валидация через `errgroup.SetLimit(10)`, один невалидный токен не ломает batch
+- **Interceptors** — Auth (x-api-key, constant-time comparison, health check bypass) + Logging (method, duration, status code), chain order: Auth → Logging → Handler
+- **gRPC Reflection** — включается при `log.level == "debug"` (для `grpcurl` без proto-файлов)
 
 | Feature | Задачи | Status |
 |---------|--------|--------|
 | Protobuf + gRPC server | TASK-048, 049 | Done |
 | gRPC handlers | TASK-050, 051 | Done |
-| Interceptors | TASK-052 | Planned |
+| Interceptors | TASK-052 | Done |
 | Prometheus | TASK-053, 054 | Planned |
 | OpenTelemetry | TASK-055, 056 | Planned |
 | Health checks | TASK-057 | Planned |
@@ -316,6 +319,8 @@ SSO_AUTH_ISSUER=https://sso.example.com
 SSO_AUTH_ACCESS_TOKEN_TTL=15m
 SSO_AUTH_REFRESH_TOKEN_TTL=168h
 SSO_SECURITY_ENCRYPTION_KEY=your-32-byte-key
+SSO_SERVER_GRPC_API_KEY=your-grpc-api-key
+SSO_SERVER_GRPC_PORT=9090
 SSO_FEDERATION_GOOGLE_CLIENT_ID=...
 SSO_FEDERATION_GOOGLE_CLIENT_SECRET=...
 SSO_FEDERATION_GOOGLE_REDIRECT_URL=https://sso.example.com/api/v1/federation/google/callback
