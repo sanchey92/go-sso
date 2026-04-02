@@ -5,6 +5,7 @@ server:
     read_timeout: 10s
     write_timeout: 30s
     shutdown_timeout: 10s
+    drain_timeout: 5s
     base_url: "http://localhost:8080"
     max_body_size: 1048576
   grpc:

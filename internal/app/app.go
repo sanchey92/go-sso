@@ -27,11 +27,11 @@ func NewApp(cfg *config.Config) (*App, error) {
 	c.AddFunc(func(_ context.Context) error { sp.healthStop(); return nil })
 	c.AddFunc(sp.httpServer.Stop)
 	c.AddFunc(sp.grpcServer.Stop)
-	c.AddFunc(func(_ context.Context) error { return sp.cache.Close() })
-	c.AddFunc(func(_ context.Context) error { sp.storage.Close(); return nil })
 	if sp.tracingShutdown != nil {
 		c.AddFunc(sp.tracingShutdown)
 	}
+	c.AddFunc(func(_ context.Context) error { return sp.cache.Close() })
+	c.AddFunc(func(_ context.Context) error { sp.storage.Close(); return nil })
 
 	return &App{
 		log:             sp.log,

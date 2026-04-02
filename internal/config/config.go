@@ -28,6 +28,7 @@ type HTTPServerConfig struct {
 	ReadTimeout     time.Duration `yaml:"read_timeout"     env:"SSO_SERVER_HTTP_READ_TIMEOUT"     env-default:"10s"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"    env:"SSO_SERVER_HTTP_WRITE_TIMEOUT"    env-default:"30s"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" env:"SSO_SERVER_HTTP_SHUTDOWN_TIMEOUT" env-default:"10s"`
+	DrainTimeout    time.Duration `yaml:"drain_timeout"    env:"SSO_SERVER_HTTP_DRAIN_TIMEOUT"    env-default:"5s"`
 	BaseURL         string        `yaml:"base_url"         env:"SSO_SERVER_HTTP_BASE_URL"         env-default:"http://localhost:8080"`
 	MaxBodySize     int64         `yaml:"max_body_size"    env:"SSO_SERVER_HTTP_MAX_BODY_SIZE"    env-default:"1048576"`
 }

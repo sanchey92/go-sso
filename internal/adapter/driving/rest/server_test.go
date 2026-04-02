@@ -70,6 +70,7 @@ func newTestServer() *Server {
 		noopMiddleware,
 		noopMiddleware,
 		testCORSConfig,
+		middleware.HSTSConfig{},
 		zap.NewNop(),
 	)
 }
@@ -123,6 +124,7 @@ func TestReadyzFailing(t *testing.T) {
 		noopMiddleware,
 		noopMiddleware,
 		testCORSConfig,
+		middleware.HSTSConfig{},
 		zap.NewNop(),
 	)
 
@@ -194,6 +196,7 @@ func TestLoginRateLimitApplied(t *testing.T) {
 		noopMiddleware,
 		noopMiddleware,
 		testCORSConfig,
+		middleware.HSTSConfig{},
 		zap.NewNop(),
 	)
 
@@ -217,6 +220,7 @@ func TestLoginRateLimitNotAffectOtherRoutes(t *testing.T) {
 		noopMiddleware,
 		noopMiddleware,
 		testCORSConfig,
+		middleware.HSTSConfig{},
 		zap.NewNop(),
 	)
 

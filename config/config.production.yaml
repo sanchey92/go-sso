@@ -10,6 +10,7 @@ server:
     read_timeout: 15s # override: SSO_SERVER_HTTP_READ_TIMEOUT
     write_timeout: 30s # override: SSO_SERVER_HTTP_WRITE_TIMEOUT
     shutdown_timeout: 15s # override: SSO_SERVER_HTTP_SHUTDOWN_TIMEOUT
+    drain_timeout: 5s    # override: SSO_SERVER_HTTP_DRAIN_TIMEOUT
     base_url: "MUST_BE_SET_VIA_ENV" # REQUIRED: SSO_SERVER_HTTP_BASE_URL
     max_body_size: 1048576 # override: SSO_SERVER_HTTP_MAX_BODY_SIZE
   grpc:
