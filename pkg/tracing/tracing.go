@@ -20,20 +20,20 @@ type Config struct {
 }
 
 func New(ctx context.Context, cfg *Config) (func(context.Context) error, error) {
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
 			semconv.ServiceNameKey.String(cfg.ServiceName),
 			semconv.ServiceVersionKey.String(cfg.ServiceVersion),
 		),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create resource: %w", err)
 	}
 
 	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpointURL(cfg.Endpoint),
+		otlptracegrpc.WithEndpoint(cfg.Endpoint),
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {

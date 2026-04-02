@@ -1,5 +1,7 @@
 FROM golang:1.26-alpine AS builder
 
+RUN apk add --no-cache upx
+
 WORKDIR /app
 
 COPY go.mod go.sum ./
@@ -7,18 +9,15 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /usecase/bin/sso ./cmd/sso/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o ./bin/sso ./cmd/sso/ \
+    && upx --best --lzma ./bin/sso
 
-FROM alpine:3.21
+FROM scratch
 
-RUN apk add --no-cache ca-certificates tzdata
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /app/bin/sso /sso
+COPY --from=builder /app/config /config
 
-WORKDIR /app
+EXPOSE 8080 50051 9090
 
-COPY --from=builder /app/bin/sso .
-COPY --from=builder /app/config ./config
-COPY --from=builder /app/migrations ./migrations
-
-EXPOSE 8080 9090
-
-ENTRYPOINT ["./sso"]
+ENTRYPOINT ["/sso"]

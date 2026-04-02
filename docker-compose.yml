@@ -1,41 +1,83 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - GOOSE_DBSTRING=postgres://${POSTGRES_USER:-sso}:${POSTGRES_PASSWORD:-sso}@postgres:5432/${POSTGRES_DB:-sso}?sslmode=disable
+    command: ["up"]
+    networks:
+      - sso-network
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${APP_HTTP_PORT}:${APP_HTTP_PORT}"
-      - "${APP_GRPC_PORT}:${APP_GRPC_PORT}"
+      - "${APP_HTTP_PORT:-8080}:8080"
+      - "${APP_GRPC_PORT:-50051}:50051"
+      - "${APP_METRICS_PORT:-9090}:9090"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      jaeger:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     environment:
-      - CONFIG_PATH=${CONFIG_PATH}
-      - POSTGRES_DSN=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=disable
-      - REDIS_ADDR=${REDIS_HOST}:${REDIS_PORT}
+      - CONFIG_PATH=config/config.local.yaml
+      - SSO_DATABASE_POSTGRES_DSN=postgres://${POSTGRES_USER:-sso}:${POSTGRES_PASSWORD:-sso}@postgres:5432/${POSTGRES_DB:-sso}?sslmode=disable
+      - SSO_DATABASE_REDIS_ADDR=redis:6379
+      - SSO_DATABASE_REDIS_PASSWORD=
+      - SSO_AUTH_ISSUER=${SSO_AUTH_ISSUER:-http://localhost:8080}
+      - SSO_SERVER_GRPC_API_KEY=${SSO_SERVER_GRPC_API_KEY:-dev-grpc-api-key-change-me}
+      - SSO_SECURITY_ENCRYPTION_KEY=${SSO_SECURITY_ENCRYPTION_KEY:-stub-encryption-key-change-me-32}
+      - SSO_FEDERATION_GOOGLE_CLIENT_ID=${SSO_FEDERATION_GOOGLE_CLIENT_ID:-google-client-id-stub}
+      - SSO_FEDERATION_GOOGLE_CLIENT_SECRET=${SSO_FEDERATION_GOOGLE_CLIENT_SECRET:-google-client-secret-stub}
+      - SSO_FEDERATION_GOOGLE_REDIRECT_URL=${SSO_FEDERATION_GOOGLE_REDIRECT_URL:-http://localhost:8080/api/v1/auth/federation/google/callback}
+      - SSO_FEDERATION_GITHUB_CLIENT_ID=${SSO_FEDERATION_GITHUB_CLIENT_ID:-github-client-id-stub}
+      - SSO_FEDERATION_GITHUB_CLIENT_SECRET=${SSO_FEDERATION_GITHUB_CLIENT_SECRET:-github-client-secret-stub}
+      - SSO_FEDERATION_GITHUB_REDIRECT_URL=${SSO_FEDERATION_GITHUB_REDIRECT_URL:-http://localhost:8080/api/v1/auth/federation/github/callback}
+      - SSO_TRACING_ENABLED=${SSO_TRACING_ENABLED:-true}
+      - SSO_TRACING_EXPORTER=otlp
+      - SSO_TRACING_ENDPOINT=jaeger:4317
+      - SSO_TRACING_SAMPLE_RATE=${SSO_TRACING_SAMPLE_RATE:-1.0}
+      - SSO_METRICS_ENABLED=${SSO_METRICS_ENABLED:-true}
+      - SSO_METRICS_PORT=9090
+      - SSO_LOG_LEVEL=${SSO_LOG_LEVEL:-debug}
+      - SSO_LOG_FORMAT=${SSO_LOG_FORMAT:-console}
+    restart: unless-stopped
+    networks:
+      - sso-network
 
   postgres:
     image: postgres:17-alpine
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-sso}
+      POSTGRES_USER: ${POSTGRES_USER:-sso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sso}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sso} -d ${POSTGRES_DB:-sso}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - sso-network
 
   redis:
     image: redis:8-alpine
     ports:
-      - "${REDIS_PORT}:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/var/lib/redis/data
     healthcheck:
@@ -43,7 +85,44 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    networks:
+      - sso-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - sso-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - sso-network
 
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:
+
+networks:
+  sso-network:
+    driver: bridge

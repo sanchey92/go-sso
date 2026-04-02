@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	_ "time/tzdata"
 
 	"github.com/joho/godotenv"
 
@@ -12,7 +13,7 @@ import (
 
 func main() {
 	if err := godotenv.Load(".env"); err != nil {
-		log.Fatalf("failed to load .env file: %v", err)
+		log.Printf("warning: .env file not loaded: %v", err)
 	}
 
 	cfg := config.MustLoad(os.Getenv("CONFIG_PATH"))

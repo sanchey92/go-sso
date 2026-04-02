@@ -228,6 +228,22 @@ tasks:
     cmds:
       - '{{.GOOSE}} -dir $MIGRATIONS_DIR create {{.CLI_ARGS}} sql'
 
+  compose-up:
+    desc: start full dev environment with observability
+    cmds:
+      - docker compose up -d
+      - docker compose rm -f migrate
+
+  compose-down:
+    desc: stop all docker compose services
+    cmds:
+      - docker compose down
+
+  compose-logs:
+    desc: tail logs of the SSO app
+    cmds:
+      - docker compose logs -f app
+
   mockery:gen:
     desc: generate mocks
     deps:

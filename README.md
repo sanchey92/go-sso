@@ -250,20 +250,68 @@ recovery_codes
 - Docker & Docker Compose
 - [Task](https://taskfile.dev/)
 
-### Run locally
+### Docker Compose (full environment with observability)
+
+One command to start everything — SSO app, PostgreSQL, Redis, Prometheus, Jaeger:
 
 ```bash
-# Start infrastructure
-docker-compose up -d postgres redis
+task compose-up
+```
+
+This starts 6 containers:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| SSO REST API | `http://localhost:8080` | Public REST API |
+| SSO gRPC | `localhost:50051` | Internal gRPC API |
+| Prometheus metrics | `http://localhost:9090/metrics` | Raw metrics endpoint |
+| Prometheus UI | `http://localhost:9091` | Metrics dashboard, target status |
+| Jaeger UI | `http://localhost:16686` | Distributed tracing |
+
+Migrations run automatically via init container before the app starts.
+
+Verify everything is working:
+
+```bash
+# Liveness
+curl localhost:8080/healthz
+# {"status":"ok"}
+
+# Readiness (checks Postgres + Redis)
+curl localhost:8080/readyz
+# {"checks":{"postgres":"ok","redis":"ok"},"status":"ready"}
+
+# Prometheus metrics
+curl localhost:9090/metrics | grep sso_
+
+# Register a user
+curl -X POST localhost:8080/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@test.com","password":"Test1234!"}'
+```
+
+After making requests, check:
+- **Prometheus UI** (`localhost:9091`) — Targets page shows `sso` with status **UP**
+- **Jaeger UI** (`localhost:16686`) — Select service `sso` to see request traces
+
+Manage the environment:
+
+```bash
+task compose-logs    # Tail SSO app logs
+task compose-down    # Stop all services
+```
+
+### Run locally (without Docker)
+
+```bash
+# Start only Postgres and Redis
+task dev:up
 
 # Install tools
 task install:tools
 
-# Run migrations
-task migrate:up
-
-# Build & run
-task run
+# Run migrations + start app
+task dev:start
 ```
 
 ### Testing
@@ -301,8 +349,8 @@ Config loaded via cleanenv: YAML base + environment variable override.
 | File | Purpose |
 |------|---------|
 | `config/config.local.yaml` | Development defaults |
-| `config/config.production.yaml` | Production (secrets via env) |
-| `.env` | Local env overrides |
+| `config/config.production.yaml` | Production (all secrets via env) |
+| `.env` | Environment variable overrides |
 
 Key environment variables:
 
