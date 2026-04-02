@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
@@ -45,14 +46,16 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/user"
 	"github.com/sanchey92/sso/pkg/logger"
 	"github.com/sanchey92/sso/pkg/metrics"
+	"github.com/sanchey92/sso/pkg/tracing"
 )
 
 type serviceProvider struct {
-	log        *zap.Logger
-	storage    *postgres.Storage
-	cache      *redis.Cache
-	httpServer *rest.Server
-	grpcServer *grpcserver.Server
+	log             *zap.Logger
+	storage         *postgres.Storage
+	cache           *redis.Cache
+	httpServer      *rest.Server
+	grpcServer      *grpcserver.Server
+	tracingShutdown func(context.Context) error
 }
 
 type adapters struct {
@@ -76,8 +79,25 @@ type usecases struct {
 
 func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	log := initLogger(cfg.Observability.Log)
+	m := metrics.New()
 
-	storage, err := initPostgres(&cfg.Database.Postgres, log)
+	// Tracing — инициализируем до всего остального,
+	// чтобы pgx/redis/handlers видели глобальный TracerProvider
+	var tracingShutdown func(context.Context) error
+	if cfg.Observability.Tracing.Enabled {
+		shutdown, err := tracing.New(context.Background(), &tracing.Config{
+			Endpoint:       cfg.Observability.Tracing.Endpoint,
+			ServiceName:    "sso",
+			ServiceVersion: "1.0.0",
+			SampleRate:     cfg.Observability.Tracing.SampleRate,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("tracing: %w", err)
+		}
+		tracingShutdown = shutdown
+	}
+
+	storage, err := initPostgres(&cfg.Database.Postgres, m, log)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: %w", err)
 	}
@@ -93,8 +113,6 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	}
 
 	httputil.SetMaxBodySize(cfg.Server.HTTP.MaxBodySize)
-
-	m := metrics.New()
 	uc := initUseCases(cfg, storage, cache, a, log)
 
 	jwksProvider := func() ([]byte, error) {
@@ -102,14 +120,15 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 	}
 
 	httpServer := initHTTPServer(cfg, m, uc, a, jwksProvider, cache, log)
-	grpcSrv := initGRPCServer(&cfg.Server.GRPC, cfg.Observability.Log.Level, a, storage, cache, log)
+	grpcSrv := initGRPCServer(&cfg.Server.GRPC, cfg.Observability.Log.Level, m, a, storage, cache, log)
 
 	return &serviceProvider{
-		log:        log,
-		storage:    storage,
-		cache:      cache,
-		httpServer: httpServer,
-		grpcServer: grpcSrv,
+		log:             log,
+		storage:         storage,
+		cache:           cache,
+		httpServer:      httpServer,
+		grpcServer:      grpcSrv,
+		tracingShutdown: tracingShutdown,
 	}, nil
 }
 
@@ -170,14 +189,14 @@ func initLogger(cfg config.LogConfig) *zap.Logger {
 	})
 }
 
-func initPostgres(cfg *config.PostgresConfig, log *zap.Logger) (*postgres.Storage, error) {
+func initPostgres(cfg *config.PostgresConfig, m *metrics.Metrics, log *zap.Logger) (*postgres.Storage, error) {
 	s, err := postgres.New(context.Background(), &postgres.Config{
 		DSN:             cfg.DSN,
 		MaxConns:        cfg.MaxConns,
 		MinConns:        cfg.MinConns,
 		MaxConnLifetime: cfg.MaxConnLifetime,
 		MaxConnIdleTime: cfg.MaxConnIdleTime,
-	}, log)
+	}, m, log)
 	if err != nil {
 		return nil, fmt.Errorf("postgres.New: %w", err)
 	}
@@ -226,7 +245,7 @@ func initHTTPServer(
 ) *rest.Server {
 	handlers := rest.Handlers{
 		User:   userhandler.NewHandler(uc.user, log),
-		Auth:   authhandler.NewHandler(uc.auth, log),
+		Auth:   authhandler.NewHandler(uc.auth, m, log),
 		Token:  tokenhandler.NewHandler(uc.token, log),
 		Client: clienthandler.NewHandler(uc.client, log),
 		OAuth:  oauthhandler.NewHandler(uc.oauth, uc.oauth, uc.token, uc.token, log),
@@ -236,9 +255,9 @@ func initHTTPServer(
 			BaseURL: cfg.Server.HTTP.BaseURL,
 		}),
 		UserInfo:   userinfohandler.NewHandler(uc.user, log),
-		Federation: federationhandler.NewHandler(uc.federation, uc.federation, log),
-		MFA:        mfahandler.New(uc.mfa, a.tokenValidator, uc.auth, log),
-		MagicLink:  magiclinkhandler.NewHandler(uc.magicLink, uc.magicLink, log),
+		Federation: federationhandler.NewHandler(uc.federation, uc.federation, m, log),
+		MFA:        mfahandler.New(uc.mfa, a.tokenValidator, uc.auth, m, log),
+		MagicLink:  magiclinkhandler.NewHandler(uc.magicLink, uc.magicLink, m, log),
 	}
 
 	loginRateLimit := middleware.RateLimit(
@@ -291,6 +310,7 @@ func initHTTPServer(
 func initGRPCServer(
 	cfg *config.GRPCServerConfig,
 	logLevel string,
+	m *metrics.Metrics,
 	a *adapters,
 	storage *postgres.Storage,
 	cache *redis.Cache,
@@ -299,10 +319,13 @@ func initGRPCServer(
 	srv := grpcserver.NewServer(&grpcserver.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
-	}, log, grpc.ChainUnaryInterceptor(
-		interceptor.AuthInterceptor(cfg.APIKey),
-		interceptor.LoggingInterceptor(log),
-	))
+	}, log,
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		grpc.ChainUnaryInterceptor(
+			interceptor.AuthInterceptor(cfg.APIKey),
+			interceptor.LoggingInterceptor(log),
+			interceptor.MetricsInterceptor(m),
+		))
 
 	h := grpchandler.New(a.jwtService, storage, cache, cfg.IntrospectionCacheTTL, log)
 	srv.RegisterService(&ssov1.SSOInternalService_ServiceDesc, h)

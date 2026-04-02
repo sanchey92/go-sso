@@ -131,3 +131,18 @@ func New() *Metrics {
 
 	return m
 }
+
+// NewTest creates unregistered Metrics for use in unit tests.
+func NewTest() *Metrics {
+	return &Metrics{
+		HTTPRequestsTotal:        prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_http_total"}, []string{"method", "path", "status"}),
+		HTTPRequestDuration:      prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_http_dur"}, []string{"method", "path"}),
+		AuthLoginTotal:           prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_auth_login"}, []string{"method", "status"}),
+		AuthTokenIssuedTotal:     prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_auth_token"}, []string{"type"}),
+		AuthMFAVerificationTotal: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_auth_mfa"}, []string{"status"}),
+		GRPCRequestsTotal:        prometheus.NewCounterVec(prometheus.CounterOpts{Name: "test_grpc_total"}, []string{"method", "status"}),
+		GRPCRequestDuration:      prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_grpc_dur"}, []string{"method"}),
+		DBQueryDuration:          prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_db_dur"}, []string{"operation"}),
+		RedisOperationDuration:   prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "test_redis_dur"}, []string{"operation"}),
+	}
+}

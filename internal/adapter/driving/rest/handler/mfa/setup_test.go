@@ -13,6 +13,7 @@ import (
 
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 func newTestHandler(t *testing.T) (*Handler, *mocks.TOTPService, *mocks.TokenValidator, *mocks.Completer) {
@@ -20,7 +21,7 @@ func newTestHandler(t *testing.T) (*Handler, *mocks.TOTPService, *mocks.TokenVal
 	ts := mocks.NewTOTPService(t)
 	tv := mocks.NewTokenValidator(t)
 	c := mocks.NewCompleter(t)
-	h := New(ts, tv, c, zap.NewNop())
+	h := New(ts, tv, c, metrics.NewTest(), zap.NewNop())
 	return h, ts, tv, c
 }
 

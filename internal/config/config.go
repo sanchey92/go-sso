@@ -144,9 +144,10 @@ type MetricsConfig struct {
 }
 
 type TracingConfig struct {
-	Enabled  bool   `yaml:"enabled"  env:"SSO_TRACING_ENABLED"  env-default:"true"`
-	Exporter string `yaml:"exporter" env:"SSO_TRACING_EXPORTER" env-default:"otlp"`
-	Endpoint string `yaml:"endpoint" env:"SSO_TRACING_ENDPOINT" env-default:"localhost:4317"`
+	Enabled    bool    `yaml:"enabled"     env:"SSO_TRACING_ENABLED"     env-default:"true"`
+	Exporter   string  `yaml:"exporter"    env:"SSO_TRACING_EXPORTER"    env-default:"otlp"`
+	Endpoint   string  `yaml:"endpoint"    env:"SSO_TRACING_ENDPOINT"    env-default:"localhost:4317"`
+	SampleRate float64 `yaml:"sample_rate" env:"SSO_TRACING_SAMPLE_RATE" env-default:"1.0"`
 }
 
 func MustLoad(configPath string) *Config {

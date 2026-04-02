@@ -45,9 +45,12 @@ func (h *Handler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := h.callback.HandleCallback(r.Context(), provider, code, state)
 	if err != nil {
+		h.metrics.AuthLoginTotal.WithLabelValues("federation", "failure").Inc()
 		h.handleError(w, r, err)
 		return
 	}
+
+	h.metrics.AuthLoginTotal.WithLabelValues("federation", "success").Inc()
 
 	httputil.RespondJSON(w, http.StatusOK, &tokenResponse{
 		AccessToken:  pair.AccessToken,

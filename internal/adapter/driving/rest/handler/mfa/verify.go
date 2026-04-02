@@ -41,9 +41,14 @@ func (h *Handler) completeVerify(w http.ResponseWriter, r *http.Request, fn comp
 
 	pair, err := fn(r.Context(), req.MFAToken, req.Code)
 	if err != nil {
+		h.metrics.AuthMFAVerificationTotal.WithLabelValues("failure").Inc()
 		h.handleVerifyError(w, r, err)
 		return
 	}
+
+	h.metrics.AuthMFAVerificationTotal.WithLabelValues("success").Inc()
+	h.metrics.AuthTokenIssuedTotal.WithLabelValues("access").Inc()
+	h.metrics.AuthTokenIssuedTotal.WithLabelValues("refresh").Inc()
 
 	httputil.RespondJSON(w, http.StatusOK, &tokenResponse{
 		AccessToken:  pair.AccessToken,

@@ -15,6 +15,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
@@ -29,7 +30,7 @@ func newTestHandler(t *testing.T) (*Handler, *mocks.LinkRequester, *mocks.LinkVe
 	t.Helper()
 	lr := mocks.NewLinkRequester(t)
 	lv := mocks.NewLinkVerifier(t)
-	h := NewHandler(lr, lv, zap.NewNop())
+	h := NewHandler(lr, lv, metrics.NewTest(), zap.NewNop())
 	return h, lr, lv
 }
 

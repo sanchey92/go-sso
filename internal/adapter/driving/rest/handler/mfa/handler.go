@@ -12,6 +12,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 const bearerPrefix = "Bearer "
@@ -35,14 +36,16 @@ type Handler struct {
 	totpSvc   TOTPService
 	validator TokenValidator
 	completer Completer
+	metrics   *metrics.Metrics
 	log       *zap.Logger
 }
 
-func New(ts TOTPService, tv TokenValidator, c Completer, l *zap.Logger) *Handler {
+func New(ts TOTPService, tv TokenValidator, c Completer, m *metrics.Metrics, l *zap.Logger) *Handler {
 	return &Handler{
 		totpSvc:   ts,
 		validator: tv,
 		completer: c,
+		metrics:   m,
 		log:       l,
 	}
 }

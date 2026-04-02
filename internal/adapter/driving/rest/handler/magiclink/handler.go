@@ -11,6 +11,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 type LinkRequester interface {
@@ -43,11 +44,12 @@ type tokenResponse struct {
 type Handler struct {
 	requester LinkRequester
 	verifier  LinkVerifier
+	metrics   *metrics.Metrics
 	log       *zap.Logger
 }
 
-func NewHandler(r LinkRequester, v LinkVerifier, log *zap.Logger) *Handler {
-	return &Handler{requester: r, verifier: v, log: log}
+func NewHandler(r LinkRequester, v LinkVerifier, m *metrics.Metrics, log *zap.Logger) *Handler {
+	return &Handler{requester: r, verifier: v, metrics: m, log: log}
 }
 
 func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +78,12 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 
 	pair, err := h.verifier.VerifyMagicLink(r.Context(), req.Token)
 	if err != nil {
+		h.metrics.AuthLoginTotal.WithLabelValues("magic_link", "failure").Inc()
 		h.handleError(w, r, err)
 		return
 	}
+
+	h.metrics.AuthLoginTotal.WithLabelValues("magic_link", "success").Inc()
 
 	httputil.RespondJSON(w, http.StatusOK, &tokenResponse{
 		AccessToken:  pair.AccessToken,

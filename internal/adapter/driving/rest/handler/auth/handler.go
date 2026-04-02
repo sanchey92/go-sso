@@ -11,6 +11,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 type AuthService interface {
@@ -18,12 +19,13 @@ type AuthService interface {
 }
 
 type Handler struct {
-	svc AuthService
-	log *zap.Logger
+	svc     AuthService
+	metrics *metrics.Metrics
+	log     *zap.Logger
 }
 
-func NewHandler(svc AuthService, log *zap.Logger) *Handler {
-	return &Handler{svc: svc, log: log}
+func NewHandler(svc AuthService, m *metrics.Metrics, log *zap.Logger) *Handler {
+	return &Handler{svc: svc, metrics: m, log: log}
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -35,17 +37,23 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.svc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
+		h.metrics.AuthLoginTotal.WithLabelValues("password", "failure").Inc()
 		h.handleError(w, r, err)
 		return
 	}
 
 	if result.MFAChallenge != nil {
+		h.metrics.AuthLoginTotal.WithLabelValues("password", "mfa_required").Inc()
 		httputil.RespondJSON(w, http.StatusOK, &mfaChallengeResponse{
 			MFARequired: true,
 			MFAToken:    result.MFAChallenge.MFAToken,
 		})
 		return
 	}
+
+	h.metrics.AuthLoginTotal.WithLabelValues("password", "success").Inc()
+	h.metrics.AuthTokenIssuedTotal.WithLabelValues("access").Inc()
+	h.metrics.AuthTokenIssuedTotal.WithLabelValues("refresh").Inc()
 
 	httputil.RespondJSON(w, http.StatusOK, &tokenResponse{
 		AccessToken:  result.Tokens.AccessToken,

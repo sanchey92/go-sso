@@ -16,6 +16,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 func withChiParam(r *http.Request, key, value string) *http.Request {
@@ -61,7 +62,7 @@ func TestHandler_Authorize(t *testing.T) {
 			initiator := mocks.NewInitiator(t)
 			tt.setup(initiator)
 
-			h := NewHandler(initiator, nil, zap.NewNop())
+			h := NewHandler(initiator, nil, metrics.NewTest(), zap.NewNop())
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/"+tt.provider+"/authorize", nil)
 			req = withChiParam(req, "provider", tt.provider)
@@ -157,7 +158,7 @@ func TestHandler_Callback(t *testing.T) {
 			callback := mocks.NewCallbackHandler(t)
 			tt.setup(callback)
 
-			h := NewHandler(nil, callback, zap.NewNop())
+			h := NewHandler(nil, callback, metrics.NewTest(), zap.NewNop())
 
 			req := httptest.NewRequest(http.MethodGet,
 				"/api/v1/auth/"+tt.provider+"/callback?"+tt.query, nil)

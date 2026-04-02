@@ -7,6 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
+
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 type Config struct {
@@ -22,7 +24,7 @@ type Storage struct {
 	log  *zap.Logger
 }
 
-func New(ctx context.Context, cfg *Config, log *zap.Logger) (*Storage, error) {
+func New(ctx context.Context, cfg *Config, m *metrics.Metrics, log *zap.Logger) (*Storage, error) {
 	pgConfig, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse dsn: %w", err)
@@ -31,6 +33,7 @@ func New(ctx context.Context, cfg *Config, log *zap.Logger) (*Storage, error) {
 	pgConfig.MinConns = cfg.MinConns
 	pgConfig.MaxConnLifetime = cfg.MaxConnLifetime
 	pgConfig.MaxConnIdleTime = cfg.MaxConnIdleTime
+	pgConfig.ConnConfig.Tracer = NewQueryTracer(m)
 
 	pool, err := pgxpool.NewWithConfig(ctx, pgConfig)
 	if err != nil {

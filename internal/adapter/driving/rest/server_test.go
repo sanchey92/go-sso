@@ -18,6 +18,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 func noopMiddleware(next http.Handler) http.Handler { return next }
@@ -54,6 +55,9 @@ func newTestServer() *Server {
 	return NewServer(
 		&Config{Host: "localhost", Port: 0},
 		testHandlers,
+		metrics.NewTest(),
+		noopMiddleware,
+		noopMiddleware,
 		noopMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
@@ -120,7 +124,10 @@ func TestLoginRateLimitApplied(t *testing.T) {
 	srv := NewServer(
 		&Config{Host: "localhost", Port: 0},
 		testHandlers,
+		metrics.NewTest(),
 		blockingMiddleware,
+		noopMiddleware,
+		noopMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
 	)
@@ -140,7 +147,10 @@ func TestLoginRateLimitNotAffectOtherRoutes(t *testing.T) {
 	srv := NewServer(
 		&Config{Host: "localhost", Port: 0},
 		testHandlers,
+		metrics.NewTest(),
 		blockingMiddleware,
+		noopMiddleware,
+		noopMiddleware,
 		testCORSConfig,
 		zap.NewNop(),
 	)

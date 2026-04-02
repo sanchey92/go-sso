@@ -28,6 +28,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	c.AddFunc(sp.grpcServer.Stop)
 	c.AddFunc(func(_ context.Context) error { return sp.cache.Close() })
 	c.AddFunc(func(_ context.Context) error { sp.storage.Close(); return nil })
+	if sp.tracingShutdown != nil {
+		c.AddFunc(sp.tracingShutdown)
+	}
 
 	return &App{
 		log:             sp.log,

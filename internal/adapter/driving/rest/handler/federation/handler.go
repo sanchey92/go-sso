@@ -11,6 +11,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/middleware"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 type Initiator interface {
@@ -24,13 +25,15 @@ type CallbackHandler interface {
 type Handler struct {
 	initiator Initiator
 	callback  CallbackHandler
+	metrics   *metrics.Metrics
 	log       *zap.Logger
 }
 
-func NewHandler(init Initiator, cb CallbackHandler, log *zap.Logger) *Handler {
+func NewHandler(init Initiator, cb CallbackHandler, m *metrics.Metrics, log *zap.Logger) *Handler {
 	return &Handler{
 		initiator: init,
 		callback:  cb,
+		metrics:   m,
 		log:       log,
 	}
 }

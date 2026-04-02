@@ -13,6 +13,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth/mocks"
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 	"github.com/sanchey92/sso/internal/domain/model"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
 
 func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.ResponseRecorder {
@@ -26,7 +27,7 @@ func doRequest(handler http.HandlerFunc, method, path, body string) *httptest.Re
 func newTestHandler(t *testing.T) (*Handler, *mocks.AuthService) {
 	t.Helper()
 	as := mocks.NewAuthService(t)
-	h := NewHandler(as, zap.NewNop())
+	h := NewHandler(as, metrics.NewTest(), zap.NewNop())
 	return h, as
 }
 

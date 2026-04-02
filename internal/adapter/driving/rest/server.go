@@ -109,6 +109,7 @@ func NewServer(
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Recovery(s.log))
+	s.router.Use(middleware.TracingMiddleware("sso"))
 	s.router.Use(middleware.MetricsMiddleware(s.metrics))
 	s.router.Use(middleware.Logging(s.log))
 	s.router.Use(middleware.CORS(s.corsConfig))
