@@ -17,15 +17,15 @@ func (h *Handler) ValidateToken(
 ) (*ssov1.ValidateTokenResponse, error) {
 	claims, err := h.introspector.ValidateToken(req.GetToken())
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "invalid or expired token")
+		return nil, status.Error(codes.Unauthenticated, "invalid or expired token") //nolint:wrapcheck // gRPC status error
 	}
 
 	user, err := h.users.GetByID(ctx, claims.Subject)
 	if err != nil {
 		if errors.Is(err, domainerrors.ErrUserNotFound) {
-			return nil, status.Error(codes.Unauthenticated, "user not found")
+			return nil, status.Error(codes.Unauthenticated, "user not found") //nolint:wrapcheck // gRPC status error
 		}
-		return nil, status.Error(codes.Internal, "internal error")
+		return nil, status.Error(codes.Internal, "internal error") //nolint:wrapcheck // gRPC status error
 	}
 	return validateTokenToProto(user), nil
 }

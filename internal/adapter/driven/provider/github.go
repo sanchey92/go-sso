@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
@@ -39,7 +40,7 @@ func NewGitHubProvider(clientID, clientSecret, redirectURL string, opts ...GitHu
 		},
 		userURL:    githubUserURL,
 		emailsURL:  githubEmailsURL,
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -120,14 +121,14 @@ func (p *GitHubProvider) fetchUser(ctx context.Context, accessToken string) (*mo
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.httpClient.Do(req) //nolint:gosec // URL from const, not user input
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // best-effort close
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) //nolint:gosec // error in error path, best-effort read
 		return nil, fmt.Errorf("github user returned %d: %s", resp.StatusCode, body)
 	}
 
@@ -160,14 +161,14 @@ func (p *GitHubProvider) fetchPrimaryEmail(ctx context.Context, accessToken stri
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.httpClient.Do(req) //nolint:gosec // URL from const, not user input
 	if err != nil {
 		return "", false, fmt.Errorf("http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // best-effort close
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) //nolint:gosec // error in error path, best-effort read
 		return "", false, fmt.Errorf("github emails returned %d: %s", resp.StatusCode, body)
 	}
 

@@ -10,8 +10,10 @@ import (
 	"github.com/sanchey92/sso/pkg/metrics"
 )
 
-type queryStartTimeKey struct{}
-type queryStartSQLKey struct{}
+type (
+	queryStartTimeKey struct{}
+	queryStartSQLKey  struct{}
+)
 
 type QueryTracer struct {
 	metrics *metrics.Metrics

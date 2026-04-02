@@ -45,7 +45,8 @@ func (s *Server) EnableReflection() {
 func (s *Server) Start() error {
 	s.log.Info("starting gRPC server", zap.String("addr", s.addr))
 
-	lis, err := net.Listen("tcp", s.addr)
+	var lc net.ListenConfig
+	lis, err := lc.Listen(context.Background(), "tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("grpc listen %s: %w", s.addr, err)
 	}

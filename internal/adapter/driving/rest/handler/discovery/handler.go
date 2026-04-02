@@ -62,5 +62,5 @@ func NewHandler(cfg *Config) *Handler {
 func (h *Handler) Discovery(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(h.response)
+	_, _ = w.Write(h.response) //nolint:gosec // error writing response body is unrecoverable
 }

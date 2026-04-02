@@ -55,7 +55,10 @@ func New(ctx context.Context, cfg *Config, m *metrics.Metrics, log *zap.Logger) 
 }
 
 func (s *Storage) Ping(ctx context.Context) error {
-	return s.pool.Ping(ctx)
+	if err := s.pool.Ping(ctx); err != nil {
+		return fmt.Errorf("postgres ping: %w", err)
+	}
+	return nil
 }
 
 func (s *Storage) Pool() *pgxpool.Pool {

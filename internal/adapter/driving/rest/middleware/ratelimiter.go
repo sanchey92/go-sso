@@ -50,7 +50,7 @@ func RateLimit(
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", retrySeconds)
 				w.WriteHeader(http.StatusTooManyRequests)
-				_ = json.NewEncoder(w).Encode(map[string]string{
+				_ = json.NewEncoder(w).Encode(map[string]string{ //nolint:gosec // error writing response body is unrecoverable
 					"error": "too many requests",
 					"code":  "RATE_LIMITED",
 				})

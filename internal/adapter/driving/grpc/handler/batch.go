@@ -21,7 +21,7 @@ func (h *Handler) BatchValidateTokens(
 
 	results := make([]*ssov1.BatchValidateResult, len(tokens))
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, _ := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 
 	for i, token := range tokens {
@@ -38,7 +38,7 @@ func (h *Handler) BatchValidateTokens(
 	}
 
 	if err := g.Wait(); err != nil {
-		return nil, status.Error(codes.Internal, "internal error")
+		return nil, status.Error(codes.Internal, "internal error") //nolint:wrapcheck // gRPC status error
 	}
 
 	return &ssov1.BatchValidateTokensResponse{Results: results}, nil

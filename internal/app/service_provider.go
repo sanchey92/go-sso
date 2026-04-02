@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -162,7 +161,7 @@ func initAdapters(cfg *config.Config, log *zap.Logger) (*adapters, error) {
 func initUseCases(cfg *config.Config, storage *postgres.Storage, cache *redis.Cache, a *adapters, log *zap.Logger) *usecases {
 	tokenSvc := token.New(a.jwtService, storage, cfg.Auth.AccessTokenTTL, cfg.Auth.RefreshTokenTTL, cfg.Auth.Audience, log)
 	userSvc := user.New(storage, a.hasher, cache, a.emailSender, a.tokenValidator, storage, cfg.Auth.VerificationTTL, cfg.Auth.ResetTTL, log)
-	mfaSvc := mfa.New(storage, storage, a.encryptor, storage, storage, cfg.MFA.TOTP.Issuer, uint(cfg.MFA.TOTP.Skew), log)
+	mfaSvc := mfa.New(storage, storage, a.encryptor, storage, storage, cfg.MFA.TOTP.Issuer, uint(cfg.MFA.TOTP.Skew), log) //nolint:gosec // skew is a small config value, overflow impossible
 
 	authSvc := auth.New(storage, a.hasher, tokenSvc, tokenSvc, a.jwtService, mfaSvc, mfaSvc, log)
 	clientSvc := client.New(storage, log)

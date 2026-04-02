@@ -33,7 +33,11 @@ func (s *Service) GenerateMFAToken(userID string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
 	token.Header["kid"] = currentKey.KID
 
-	return token.SignedString(currentKey.PrivateKey)
+	signed, err := token.SignedString(currentKey.PrivateKey)
+	if err != nil {
+		return "", fmt.Errorf("sign mfa token: %w", err)
+	}
+	return signed, nil
 }
 
 func (s *Service) ValidateMFAToken(tokenString string) (string, error) {

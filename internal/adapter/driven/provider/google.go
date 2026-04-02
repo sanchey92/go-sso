@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -33,7 +34,7 @@ func NewGoogleProvider(clientID, clientSecret, redirectURL string, opts ...Googl
 			Endpoint:     google.Endpoint,
 		},
 		userInfoURL: googleUserInfoURL,
-		httpClient:  http.DefaultClient,
+		httpClient:  &http.Client{Timeout: 10 * time.Second},
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -98,14 +99,14 @@ func (p *GoogleProvider) fetchUserInfo(ctx context.Context, accessToken string) 
 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.httpClient.Do(req) //nolint:gosec // URL from const, not user input
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // best-effort close
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) //nolint:gosec // error in error path, best-effort read
 		return nil, fmt.Errorf("google userinfo returned %d: %s", resp.StatusCode, body)
 	}
 

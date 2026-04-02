@@ -81,7 +81,7 @@ func findIdentityUserID(ctx context.Context, tx pgx.Tx, provider, providerUserID
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", domainerrors.ErrFederatedIdentityNotFound
 		}
-		return "", err
+		return "", fmt.Errorf("query federated identity: %w", err)
 	}
 
 	return userID, nil
@@ -120,7 +120,7 @@ func insertUser(ctx context.Context, tx pgx.Tx, pu *model.ProviderUser) (*model.
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 			return nil, domainerrors.ErrEmailAlreadyExists
 		}
-		return nil, err
+		return nil, fmt.Errorf("insert user: %w", err)
 	}
 
 	return user, nil
@@ -136,7 +136,7 @@ func insertIdentity(ctx context.Context, tx pgx.Tx, userID, provider string, pu 
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 			return domainerrors.ErrIdentityAlreadyLinked
 		}
-		return err
+		return fmt.Errorf("insert identity: %w", err)
 	}
 
 	return nil

@@ -137,7 +137,7 @@ func redirectWithError(w http.ResponseWriter, r *http.Request,
 }
 
 func buildRedirectURL(redirectURI, code, state string) string {
-	u, _ := url.Parse(redirectURI)
+	u, _ := url.Parse(redirectURI) //nolint:gosec // redirectURI already validated by usecase
 	q := u.Query()
 	q.Set("code", code)
 	if state != "" {

@@ -87,7 +87,6 @@ func (s *Service) ValidateToken(tokenStr string) (*model.TokenClaims, error) {
 		}
 		return key.PublicKey, nil
 	})
-
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, domainerrors.ErrTokenExpired

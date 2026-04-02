@@ -13,15 +13,15 @@ import (
 
 func (h *Handler) GetUser(ctx context.Context, req *ssov1.GetUserRequest) (*ssov1.GetUserResponse, error) {
 	if req.GetUserId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "user_id is required")
+		return nil, status.Error(codes.InvalidArgument, "user_id is required") //nolint:wrapcheck // gRPC status error
 	}
 
 	user, err := h.users.GetByID(ctx, req.GetUserId())
 	if err != nil {
 		if errors.Is(err, domainerrors.ErrUserNotFound) {
-			return nil, status.Error(codes.NotFound, "user not found")
+			return nil, status.Error(codes.NotFound, "user not found") //nolint:wrapcheck // gRPC status error
 		}
-		return nil, status.Error(codes.Internal, "internal error")
+		return nil, status.Error(codes.Internal, "internal error") //nolint:wrapcheck // gRPC status error
 	}
 
 	return userToProto(user), nil

@@ -104,8 +104,9 @@ func NewServer(
 	metricsRouter := chi.NewRouter()
 	metricsRouter.Handle("/metrics", promhttp.Handler())
 	s.metricsServer = &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cfg.Host, cfg.MetricsPort),
-		Handler: metricsRouter,
+		Addr:              fmt.Sprintf("%s:%d", cfg.Host, cfg.MetricsPort),
+		Handler:           metricsRouter,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	return s
@@ -129,8 +130,8 @@ func (s *Server) setupRoutes() {
 
 		r.Post("/token/refresh", s.handlers.Token.Refresh)
 		r.Post("/token/revoke", s.handlers.Token.Revoke)
-		r.Post("/email/verify", s.handlers.User.VerifyEmail)
-		r.Post("/password/reset-request", s.handlers.User.RequestPasswordReset)
+		r.With(s.loginRateLimit).Post("/email/verify", s.handlers.User.VerifyEmail)
+		r.With(s.magicLinkRateLimit).Post("/password/reset-request", s.handlers.User.RequestPasswordReset)
 		r.Post("/password/reset", s.handlers.User.ResetPassword)
 
 		r.Post("/mfa/totp/setup", s.handlers.MFA.Setup)
@@ -186,7 +187,10 @@ func (s *Server) Start() error {
 		return nil
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("start servers: %w", err)
+	}
+	return nil
 }
 
 func (s *Server) Stop(ctx context.Context) error {
@@ -208,7 +212,10 @@ func (s *Server) Stop(ctx context.Context) error {
 		return nil
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("stop servers: %w", err)
+	}
+	return nil
 }
 
 func (s *Server) Handler() http.Handler {

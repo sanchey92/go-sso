@@ -35,7 +35,7 @@ func (h *Handler) IntrospectToken(
 	if err != nil {
 		inactive := &cachedIntrospection{Active: false}
 		h.cacheIntrospection(ctx, cacheKey, inactive)
-		return cacheToProto(inactive), nil
+		return cacheToProto(inactive), nil //nolint:nilerr // invalid token returns inactive response, not error
 	}
 
 	cached := claimsToCache(claims)
