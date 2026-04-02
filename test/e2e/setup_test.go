@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,11 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
+
+	ssov1 "github.com/sanchey92/sso/gen/sso/v1"
 	"github.com/sanchey92/sso/internal/adapter/driven/email"
 	"github.com/sanchey92/sso/internal/adapter/driven/encryptor"
 	"github.com/sanchey92/sso/internal/adapter/driven/hasher"
@@ -30,11 +36,14 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driven/postgres"
 	"github.com/sanchey92/sso/internal/adapter/driven/provider"
 	"github.com/sanchey92/sso/internal/adapter/driven/redis"
+	grpchandler "github.com/sanchey92/sso/internal/adapter/driving/grpc/handler"
+	"github.com/sanchey92/sso/internal/adapter/driving/grpc/interceptor"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest"
 	authhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
+	healthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/health"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	magiclinkhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink"
 	mfahandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
@@ -52,12 +61,19 @@ import (
 	"github.com/sanchey92/sso/internal/usecase/oauth"
 	"github.com/sanchey92/sso/internal/usecase/token"
 	"github.com/sanchey92/sso/internal/usecase/user"
+	"github.com/sanchey92/sso/pkg/metrics"
 )
+
+const testGRPCAPIKey = "test-api-key"
 
 var (
 	ts         *httptest.Server // HTTP-сервер для E2E-запросов
 	httpClient *http.Client     // HTTP-клиент (не следует за редиректами)
 	baseURL    string           // URL тестового сервера
+
+	// gRPC
+	grpcAddr   string       // адрес gRPC-сервера (host:port)
+	grpcServer *grpc.Server // для остановки в cleanup
 
 	// Прямой доступ к инфраструктуре (для хелперов)
 	testRedisAddr string
@@ -143,6 +159,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// 9. Cleanup
+	grpcServer.GracefulStop()
 	ts.Close()
 	mockTokenSrv.Close()
 	mockUserInfoSrv.Close()
@@ -229,13 +246,15 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 
 	ctx := context.Background()
 
+	m := metrics.NewTest()
+
 	storage, err := postgres.New(ctx, &postgres.Config{
 		DSN:             pgConnStr,
 		MaxConns:        5,
 		MinConns:        1,
 		MaxConnLifetime: time.Minute,
 		MaxConnIdleTime: time.Minute,
-	}, log)
+	}, m, log)
 	if err != nil {
 		panic("failed to create storage: " + err.Error())
 	}
@@ -326,7 +345,7 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 
 	handlers := rest.Handlers{
 		User:   userhandler.NewHandler(userService, log),
-		Auth:   authhandler.NewHandler(authService, log),
+		Auth:   authhandler.NewHandler(authService, m, log),
 		Token:  tokenhandler.NewHandler(tokenService, log),
 		Client: clienthandler.NewHandler(clientService, log),
 		OAuth:  oauthhandler.NewHandler(oauthService, oauthService, tokenService, tokenService, log),
@@ -336,9 +355,10 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 			BaseURL: "TEST_BASE_URL", // будет заменён после создания httptest.Server
 		}),
 		UserInfo:   userinfohandler.NewHandler(userService, log),
-		Federation: federationhandler.NewHandler(federationService, federationService, log),
-		MFA:        mfahandler.New(mfaService, tokenValidator, authService, log),
-		MagicLink:  magiclinkhandler.NewHandler(magicLinkService, magicLinkService, log),
+		Federation: federationhandler.NewHandler(federationService, federationService, m, log),
+		MFA:        mfahandler.New(mfaService, tokenValidator, authService, m, log),
+		MagicLink:  magiclinkhandler.NewHandler(magicLinkService, magicLinkService, m, log),
+		Health:     healthhandler.NewHandler(storage, cache),
 	}
 
 	// Rate limiter: в E2E-тестах используем noop (не блокируем)
@@ -358,7 +378,34 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 		MetricsPort:  0,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
-	}, handlers, noopRateLimit, noopRateLimit, noopRateLimit, corsCfg, log)
+	}, handlers, m, noopRateLimit, noopRateLimit, noopRateLimit, corsCfg, log)
+
+	// --- gRPC Server ---
+
+	grpcSrv := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			interceptor.AuthInterceptor(testGRPCAPIKey),
+		),
+	)
+	grpcH := grpchandler.New(jwtService, storage, cache, 5*time.Minute, log)
+	ssov1.RegisterSSOInternalServiceServer(grpcSrv, grpcH)
+
+	healthSrv := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcSrv, healthSrv)
+	healthSrv.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic("failed to listen for grpc: " + err.Error())
+	}
+	grpcAddr = lis.Addr().String()
+	grpcServer = grpcSrv
+
+	go func() {
+		if err := grpcSrv.Serve(lis); err != nil {
+			panic("grpc serve: " + err.Error())
+		}
+	}()
 
 	// Сохраняем зависимости для хелперов
 	testDeps.storage = storage

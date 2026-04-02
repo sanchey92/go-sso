@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -15,7 +16,11 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
+	ssov1 "github.com/sanchey92/sso/gen/sso/v1"
 	"github.com/sanchey92/sso/pkg/crypto"
 )
 
@@ -298,4 +303,31 @@ func generatePKCE(t *testing.T) (verifier, challenge string) {
 	challenge = base64.RawURLEncoding.EncodeToString(hash[:])
 
 	return verifier, challenge
+}
+
+// grpcClient creates gRPC SSO client with valid API key.
+func grpcClient(t *testing.T) (ssov1.SSOInternalServiceClient, *grpc.ClientConn) {
+	t.Helper()
+
+	conn, err := grpc.NewClient(grpcAddr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	return ssov1.NewSSOInternalServiceClient(conn), conn
+}
+
+// grpcCtx returns context with API key metadata.
+func grpcCtx(t *testing.T) context.Context {
+	t.Helper()
+	md := metadata.Pairs("x-api-key", testGRPCAPIKey)
+	return metadata.NewOutgoingContext(t.Context(), md)
+}
+
+// grpcCtxWithKey returns context with custom API key.
+func grpcCtxWithKey(t *testing.T, key string) context.Context {
+	t.Helper()
+	md := metadata.Pairs("x-api-key", key)
+	return metadata.NewOutgoingContext(t.Context(), md)
 }
