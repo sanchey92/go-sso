@@ -68,6 +68,8 @@ security:
     allow_headers: "Content-Type, Authorization, X-Request-ID"
     expose_headers: "X-Request-ID"
     max_age: "86400"
+  hsts:
+    enabled: false
   rate_limit:
     login:
       max_attempts: 10

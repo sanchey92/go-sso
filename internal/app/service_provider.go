@@ -307,13 +307,18 @@ func initHTTPServer(
 		MaxAge:        cfg.Security.CORS.MaxAge,
 	}
 
+	hstsCfg := middleware.HSTSConfig{
+		Enabled: cfg.Security.HSTS.Enabled,
+		MaxAge:  cfg.Security.HSTS.MaxAge,
+	}
+
 	return rest.NewServer(&rest.Config{
 		Host:         cfg.Server.HTTP.Host,
 		Port:         cfg.Server.HTTP.Port,
 		MetricsPort:  cfg.Observability.Metrics.Port,
 		ReadTimeout:  cfg.Server.HTTP.ReadTimeout,
 		WriteTimeout: cfg.Server.HTTP.WriteTimeout,
-	}, handlers, m, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, log)
+	}, handlers, m, loginRateLimit, mfaRateLimit, magicLinkRateLimit, corsCfg, hstsCfg, log)
 }
 
 func initGRPCServer(

@@ -115,10 +115,16 @@ type CORSConfig struct {
 	MaxAge        string `yaml:"max_age"        env:"SSO_SECURITY_CORS_MAX_AGE"        env-default:"86400"`
 }
 
+type HSTSConfig struct {
+	Enabled bool `yaml:"enabled" env:"SSO_SECURITY_HSTS_ENABLED" env-default:"false"`
+	MaxAge  int  `yaml:"max_age" env:"SSO_SECURITY_HSTS_MAX_AGE"  env-default:"31536000"`
+}
+
 type SecurityConfig struct {
 	EncryptionKey string          `yaml:"encryption_key" env:"SSO_SECURITY_ENCRYPTION_KEY" env-required:"true"`
 	RateLimit     RateLimitConfig `yaml:"rate_limit"`
 	CORS          CORSConfig      `yaml:"cors"`
+	HSTS          HSTSConfig      `yaml:"hsts"`
 }
 
 type RateLimitConfig struct {

@@ -73,6 +73,9 @@ security:
     allow_headers: "Content-Type, Authorization, X-Request-ID" # override: SSO_SECURITY_CORS_ALLOW_HEADERS
     expose_headers: "X-Request-ID" # override: SSO_SECURITY_CORS_EXPOSE_HEADERS
     max_age: "86400" # override: SSO_SECURITY_CORS_MAX_AGE
+  hsts:
+    enabled: true
+    max_age: 31536000 # override: SSO_SECURITY_HSTS_MAX_AGE
   rate_limit:
     login:
       max_attempts: 10

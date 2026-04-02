@@ -372,13 +372,15 @@ func mustSetupServer(pgConnStr, redisAddr string) *httptest.Server {
 		MaxAge:        "86400",
 	}
 
+	hstsCfg := middleware.HSTSConfig{Enabled: false}
+
 	srv := rest.NewServer(&rest.Config{
 		Host:         "127.0.0.1",
 		Port:         0,
 		MetricsPort:  0,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
-	}, handlers, m, noopRateLimit, noopRateLimit, noopRateLimit, corsCfg, log)
+	}, handlers, m, noopRateLimit, noopRateLimit, noopRateLimit, corsCfg, hstsCfg, log)
 
 	// --- gRPC Server ---
 

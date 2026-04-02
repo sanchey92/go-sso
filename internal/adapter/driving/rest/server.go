@@ -62,6 +62,7 @@ type Server struct {
 	mfaRateLimit       func(http.Handler) http.Handler
 	magicLinkRateLimit func(http.Handler) http.Handler
 	corsConfig         middleware.CORSConfig
+	hstsConfig         middleware.HSTSConfig
 	log                *zap.Logger
 }
 
@@ -73,6 +74,7 @@ func NewServer(
 	mfaRateLimiter func(http.Handler) http.Handler,
 	magicLinkTateLimit func(http.Handler) http.Handler,
 	corsCfg middleware.CORSConfig,
+	hstsCfg middleware.HSTSConfig,
 	log *zap.Logger,
 ) *Server {
 	r := chi.NewRouter()
@@ -85,6 +87,7 @@ func NewServer(
 		mfaRateLimit:       mfaRateLimiter,
 		magicLinkRateLimit: magicLinkTateLimit,
 		corsConfig:         corsCfg,
+		hstsConfig:         hstsCfg,
 		log:                log,
 	}
 
@@ -111,6 +114,7 @@ func NewServer(
 func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.Recovery(s.log))
+	s.router.Use(middleware.SecurityMiddleware(s.hstsConfig))
 	s.router.Use(middleware.TracingMiddleware("sso"))
 	s.router.Use(middleware.MetricsMiddleware(s.metrics))
 	s.router.Use(middleware.Logging(s.log))
