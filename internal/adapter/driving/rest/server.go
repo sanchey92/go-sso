@@ -16,6 +16,7 @@ import (
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/health"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
@@ -48,6 +49,7 @@ type Handlers struct {
 	Federation *federation.Handler
 	MFA        *mfa.Handler
 	MagicLink  *magiclink.Handler
+	Health     *health.Handler
 }
 
 type Server struct {
@@ -156,11 +158,8 @@ func (s *Server) setupRoutes() {
 	s.router.Get("/.well-known/openid-configuration", s.handlers.Discovery.Discovery)
 	s.router.Get("/.well-known/jwks.json", s.handlers.JWKS.JWKS)
 
-	s.router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status": "ok"}`)) //nolint:gosec // error writing response body is unrecoverable
-	})
+	s.router.Get("/healthz", s.handlers.Health.Liveness)
+	s.router.Get("/readyz", s.handlers.Health.Readiness)
 }
 
 func (s *Server) Start() error {

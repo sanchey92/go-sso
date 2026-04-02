@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"time"
+
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 
 	ssov1 "github.com/sanchey92/sso/gen/sso/v1"
 	"github.com/sanchey92/sso/internal/adapter/driven/email"
@@ -26,6 +30,7 @@ import (
 	clienthandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
 	discoveryhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/discovery"
 	federationhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/federation"
+	healthhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/health"
 	jwkshandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/jwks"
 	magiclinkhandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/magiclink"
 	mfahandler "github.com/sanchey92/sso/internal/adapter/driving/rest/handler/mfa"
@@ -56,6 +61,7 @@ type serviceProvider struct {
 	httpServer      *rest.Server
 	grpcServer      *grpcserver.Server
 	tracingShutdown func(context.Context) error
+	healthStop      func()
 }
 
 type adapters struct {
@@ -119,8 +125,8 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 		return json.Marshal(a.jwtService.GetJWKS())
 	}
 
-	httpServer := initHTTPServer(cfg, m, uc, a, jwksProvider, cache, log)
-	grpcSrv := initGRPCServer(&cfg.Server.GRPC, cfg.Observability.Log.Level, m, a, storage, cache, log)
+	httpServer := initHTTPServer(cfg, m, uc, a, jwksProvider, storage, cache, log)
+	grpcSrv, healthStop := initGRPCServer(&cfg.Server.GRPC, cfg.Observability.Log.Level, m, a, storage, cache, log)
 
 	return &serviceProvider{
 		log:             log,
@@ -129,6 +135,7 @@ func newServiceProvider(cfg *config.Config) (*serviceProvider, error) {
 		httpServer:      httpServer,
 		grpcServer:      grpcSrv,
 		tracingShutdown: tracingShutdown,
+		healthStop:      healthStop,
 	}, nil
 }
 
@@ -240,6 +247,7 @@ func initHTTPServer(
 	uc *usecases,
 	a *adapters,
 	jwksProvider func() ([]byte, error),
+	storage *postgres.Storage,
 	cache *redis.Cache,
 	log *zap.Logger,
 ) *rest.Server {
@@ -258,6 +266,7 @@ func initHTTPServer(
 		Federation: federationhandler.NewHandler(uc.federation, uc.federation, m, log),
 		MFA:        mfahandler.New(uc.mfa, a.tokenValidator, uc.auth, m, log),
 		MagicLink:  magiclinkhandler.NewHandler(uc.magicLink, uc.magicLink, m, log),
+		Health:     healthhandler.NewHandler(storage, cache),
 	}
 
 	loginRateLimit := middleware.RateLimit(
@@ -315,7 +324,7 @@ func initGRPCServer(
 	storage *postgres.Storage,
 	cache *redis.Cache,
 	log *zap.Logger,
-) *grpcserver.Server {
+) (*grpcserver.Server, func()) {
 	srv := grpcserver.NewServer(&grpcserver.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
@@ -330,9 +339,57 @@ func initGRPCServer(
 	h := grpchandler.New(a.jwtService, storage, cache, cfg.IntrospectionCacheTTL, log)
 	srv.RegisterService(&ssov1.SSOInternalService_ServiceDesc, h)
 
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(srv.GRPCServer(), healthServer)
+
+	stop := startHealthChecker(cfg.HealthCheckInterval, storage, cache, healthServer, log)
+
 	if logLevel == "debug" {
 		srv.EnableReflection()
 	}
 
-	return srv
+	return srv, stop
+}
+
+func startHealthChecker(
+	interval time.Duration,
+	storage *postgres.Storage,
+	cache *redis.Cache,
+	hs *health.Server,
+	log *zap.Logger,
+) func() {
+	ticker := time.NewTicker(interval)
+	done := make(chan struct{})
+
+	check := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		pgErr := storage.Ping(ctx)
+		redisErr := cache.Ping(ctx)
+
+		if pgErr != nil || redisErr != nil {
+			log.Warn("health check failed", zap.Error(pgErr), zap.Error(redisErr))
+			hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+			return
+		}
+		hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	}
+
+	check()
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				check()
+			case <-done:
+				ticker.Stop()
+				hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+				return
+			}
+		}
+	}()
+
+	return func() { close(done) }
 }

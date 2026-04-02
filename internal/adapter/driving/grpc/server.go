@@ -29,6 +29,10 @@ func NewServer(cfg *Config, log *zap.Logger, opts ...grpc.ServerOption) *Server 
 	}
 }
 
+func (s *Server) GRPCServer() *grpc.Server {
+	return s.grpcServer
+}
+
 func (s *Server) RegisterService(desc *grpc.ServiceDesc, impl any) {
 	s.grpcServer.RegisterService(desc, impl)
 }

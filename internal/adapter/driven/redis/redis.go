@@ -9,6 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/redis/go-redis/extra/redisotel/v9"
+
 	domainerrors "github.com/sanchey92/sso/internal/domain/errors"
 )
 
@@ -49,10 +51,18 @@ func NewCache(config *Config, log *zap.Logger) (*Cache, error) {
 		return nil, fmt.Errorf("redis ping: %w", err)
 	}
 
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		return nil, fmt.Errorf("redis otel tracing: %w", err)
+	}
+
 	return &Cache{
 		client: client,
 		log:    log,
 	}, nil
+}
+
+func (c *Cache) Ping(ctx context.Context) error {
+	return c.client.Ping(ctx).Err()
 }
 
 func (c *Cache) Close() error {

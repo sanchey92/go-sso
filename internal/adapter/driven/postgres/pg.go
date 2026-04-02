@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
@@ -33,7 +34,12 @@ func New(ctx context.Context, cfg *Config, m *metrics.Metrics, log *zap.Logger) 
 	pgConfig.MinConns = cfg.MinConns
 	pgConfig.MaxConnLifetime = cfg.MaxConnLifetime
 	pgConfig.MaxConnIdleTime = cfg.MaxConnIdleTime
-	pgConfig.ConnConfig.Tracer = NewQueryTracer(m)
+	pgConfig.ConnConfig.Tracer = newCompositeTracer(
+		NewQueryTracer(m), // Prometheus метрики
+		otelpgx.NewTracer( // OTel spans
+			otelpgx.WithTrimSQLInSpanName(),
+		),
+	)
 
 	pool, err := pgxpool.NewWithConfig(ctx, pgConfig)
 	if err != nil {
@@ -46,6 +52,10 @@ func New(ctx context.Context, cfg *Config, m *metrics.Metrics, log *zap.Logger) 
 		pool: pool,
 		log:  log,
 	}, nil
+}
+
+func (s *Storage) Ping(ctx context.Context) error {
+	return s.pool.Ping(ctx)
 }
 
 func (s *Storage) Pool() *pgxpool.Pool {

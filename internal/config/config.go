@@ -37,6 +37,7 @@ type GRPCServerConfig struct {
 	Port                  int           `yaml:"port"                   env:"SSO_SERVER_GRPC_PORT"                   env-default:"9091"`
 	APIKey                string        `yaml:"api_key"                env:"SSO_SERVER_GRPC_API_KEY"                env-required:"true"`
 	IntrospectionCacheTTL time.Duration `yaml:"introspection_cache_ttl" env:"SSO_SERVER_GRPC_INTROSPECTION_CACHE_TTL" env-default:"5m"`
+	HealthCheckInterval   time.Duration `yaml:"health_check_interval"   env:"SSO_SERVER_GRPC_HEALTH_CHECK_INTERVAL"   env-default:"10s"`
 }
 
 type DatabaseConfig struct {

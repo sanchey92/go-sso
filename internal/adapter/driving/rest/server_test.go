@@ -1,7 +1,9 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/auth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/client"
+	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/health"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/oauth"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/token"
 	"github.com/sanchey92/sso/internal/adapter/driving/rest/handler/user"
@@ -35,6 +38,12 @@ func blockingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+type mockPingChecker struct {
+	err error
+}
+
+func (m *mockPingChecker) Ping(_ context.Context) error { return m.err }
+
 var testCORSConfig = middleware.CORSConfig{
 	AllowOrigins:  "*",
 	AllowMethods:  "GET, POST, PUT, DELETE, OPTIONS",
@@ -49,6 +58,7 @@ var testHandlers = Handlers{
 	Token:  &token.Handler{},
 	Client: &client.Handler{},
 	OAuth:  &oauth.Handler{},
+	Health: health.NewHandler(&mockPingChecker{}, &mockPingChecker{}),
 }
 
 func newTestServer() *Server {
@@ -74,6 +84,61 @@ func TestHealthz(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+}
+
+func TestReadyzOK(t *testing.T) {
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "ready", body["status"])
+
+	checks := body["checks"].(map[string]any)
+	assert.Equal(t, "ok", checks["postgres"])
+	assert.Equal(t, "ok", checks["redis"])
+}
+
+func TestReadyzFailing(t *testing.T) {
+	failingHandlers := Handlers{
+		User:   &user.Handler{},
+		Auth:   &auth.Handler{},
+		Token:  &token.Handler{},
+		Client: &client.Handler{},
+		OAuth:  &oauth.Handler{},
+		Health: health.NewHandler(&mockPingChecker{}, &mockPingChecker{err: errors.New("connection refused")}),
+	}
+
+	srv := NewServer(
+		&Config{Host: "localhost", Port: 0},
+		failingHandlers,
+		metrics.NewTest(),
+		noopMiddleware,
+		noopMiddleware,
+		noopMiddleware,
+		testCORSConfig,
+		zap.NewNop(),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, "not_ready", body["status"])
+
+	checks := body["checks"].(map[string]any)
+	assert.Equal(t, "ok", checks["postgres"])
+	assert.Contains(t, checks["redis"], "connection refused")
 }
 
 func TestRequestIDHeader(t *testing.T) {
