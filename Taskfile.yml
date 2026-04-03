@@ -244,6 +244,11 @@ tasks:
     cmds:
       - docker compose logs -f app
 
+  api-docs-lint:
+    desc: lint OpenAPI specification
+    cmds:
+      - npx @redocly/cli lint docs/openapi.yaml --config docs/redocly.yaml
+
   mockery:gen:
     desc: generate mocks
     deps:

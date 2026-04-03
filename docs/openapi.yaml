@@ -1,0 +1,1688 @@
+openapi: 3.0.3
+info:
+  title: SSO Service API
+  description: |
+    Single Sign-On (SSO) service providing identity management, authentication,
+    OAuth 2.0 / OpenID Connect authorization, MFA (TOTP), magic link login,
+    and identity federation (Google, GitHub).
+
+    ## Authentication
+    - **Bearer**: JWT access token in `Authorization: Bearer <token>` header.
+    - **Basic**: HTTP Basic with `client_id:client_secret` for OAuth token endpoint.
+
+    ## Rate Limiting
+    Rate-limited endpoints return `429 Too Many Requests` with a `Retry-After` header
+    when the limit is exceeded. Limits are per IP address using a sliding window.
+  version: 1.0.0
+  contact:
+    name: SSO Team
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+security:
+  - {}
+
+servers:
+  - url: '{scheme}://{host}:{port}'
+    description: SSO Service
+    variables:
+      scheme:
+        default: http
+        enum: [http, https]
+      host:
+        default: localhost
+      port:
+        default: '8080'
+
+tags:
+  - name: Auth
+    description: Registration, login, email verification, password reset
+  - name: Token
+    description: Token refresh and revocation
+  - name: MFA
+    description: Multi-factor authentication (TOTP and recovery codes)
+  - name: Magic Link
+    description: Passwordless authentication via email magic links
+  - name: OAuth
+    description: OAuth 2.0 Authorization Code flow with PKCE
+  - name: Client
+    description: OAuth client management
+  - name: Federation
+    description: Identity federation with external providers (Google, GitHub)
+  - name: OIDC Discovery
+    description: OpenID Connect discovery and JWKS endpoints
+  - name: UserInfo
+    description: OpenID Connect UserInfo endpoint
+  - name: Health
+    description: Liveness and readiness probes
+
+paths:
+  # ──────────────────────────── Auth ────────────────────────────
+  /api/v1/auth/register:
+    post:
+      operationId: registerUser
+      tags: [Auth]
+      summary: Register a new user
+      description: Creates a new user account. A verification email is sent to confirm the address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: user@example.com
+              password: StrongP@ss1
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                user_id: 550e8400-e29b-41d4-a716-446655440000
+                message: user registered successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: email already exists
+                code: EMAIL_EXISTS
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/login:
+    post:
+      operationId: loginUser
+      tags: [Auth]
+      summary: Authenticate with email and password
+      description: |
+        Authenticates a user with email/password credentials.
+        If MFA is enabled, returns an MFA challenge token instead of access tokens.
+
+        **Rate limit:** per IP, sliding window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: user@example.com
+              password: StrongP@ss1
+      responses:
+        '200':
+          description: Login successful or MFA challenge issued
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TokenPairResponse'
+                  - $ref: '#/components/schemas/MFAChallengeResponse'
+              examples:
+                success:
+                  summary: Login without MFA
+                  value:
+                    access_token: eyJhbGciOiJFZERTQSIs...
+                    refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+                    expires_in: 900
+                mfa_required:
+                  summary: MFA challenge
+                  value:
+                    mfa_required: true
+                    mfa_token: mfa_550e8400-e29b-41d4-a716-446655440000
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid credentials
+                code: INVALID_CREDENTIALS
+        '403':
+          description: Email not verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: email not verified
+                code: EMAIL_NOT_VERIFIED
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/email/verify:
+    post:
+      operationId: verifyEmail
+      tags: [Auth]
+      summary: Verify email address
+      description: |
+        Confirms a user's email address using a token sent via email.
+
+        **Rate limit:** per IP, sliding window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            example:
+              token: verify_550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: email verified successfully
+        '400':
+          description: Invalid or expired verification token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid or expired verification token
+                code: INVALID_VERIFICATION_TOKEN
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/password/reset-request:
+    post:
+      operationId: requestPasswordReset
+      tags: [Auth]
+      summary: Request a password reset link
+      description: |
+        Sends a password reset email. Always returns success to avoid user enumeration.
+
+        **Rate limit:** per IP, sliding window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+            example:
+              email: user@example.com
+      responses:
+        '200':
+          description: Reset link sent (if account exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: if the email exists, a password reset link has been sent
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/password/reset:
+    post:
+      operationId: resetPassword
+      tags: [Auth]
+      summary: Reset password with token
+      description: Sets a new password using the reset token from the email link.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            example:
+              token: reset_550e8400-e29b-41d4-a716-446655440000
+              new_password: NewStrongP@ss2
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: password has been reset successfully
+        '400':
+          description: Invalid or expired reset token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid or expired reset token
+                code: INVALID_RESET_TOKEN
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── Token ────────────────────────────
+  /api/v1/auth/token/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Token]
+      summary: Refresh access token
+      description: |
+        Exchanges a valid refresh token for a new token pair.
+        Implements refresh token rotation — the old refresh token is invalidated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            example:
+              refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+      responses:
+        '200':
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairResponse'
+              example:
+                access_token: eyJhbGciOiJFZERTQSIs...
+                refresh_token: bmV3IHJlZnJlc2ggdG9rZW4...
+                expires_in: 900
+        '401':
+          description: Invalid, expired, or revoked refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid token
+                code: INVALID_TOKEN
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/token/revoke:
+    post:
+      operationId: revokeToken
+      tags: [Token]
+      summary: Revoke a refresh token
+      description: Revokes a refresh token so it can no longer be used.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            example:
+              refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+      responses:
+        '204':
+          description: Token revoked successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── MFA ────────────────────────────
+  /api/v1/auth/mfa/totp/setup:
+    post:
+      operationId: setupTOTP
+      tags: [MFA]
+      summary: Start TOTP setup
+      description: |
+        Generates a TOTP secret and returns an `otpauth://` URI for QR code scanning.
+        Requires a valid access token.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: TOTP secret URI generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupTOTPResponse'
+              example:
+                secret_uri: "otpauth://totp/SSO:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=SSO"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: MFA already enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: mfa already enabled
+                code: MFA_ALREADY_ENABLED
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/mfa/totp/verify-setup:
+    post:
+      operationId: verifyTOTPSetup
+      tags: [MFA]
+      summary: Confirm TOTP setup
+      description: |
+        Verifies the TOTP code to complete MFA setup. Returns one-time recovery codes.
+        Requires a valid access token.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeRequest'
+            example:
+              code: "123456"
+      responses:
+        '200':
+          description: TOTP enabled, recovery codes issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifySetupResponse'
+              example:
+                recovery_codes:
+                  - abc12-def34
+                  - ghi56-jkl78
+                  - mno90-pqr12
+                  - stu34-vwx56
+                  - yza78-bcd90
+                  - efg12-hij34
+                  - klm56-nop78
+                  - qrs90-tuv12
+        '400':
+          description: Invalid TOTP code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid totp code
+                code: INVALID_TOTP_CODE
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/mfa/totp:
+    delete:
+      operationId: disableTOTP
+      tags: [MFA]
+      summary: Disable TOTP
+      description: |
+        Disables MFA by providing a valid TOTP code. Requires a valid access token.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CodeRequest'
+            example:
+              code: "123456"
+      responses:
+        '204':
+          description: TOTP disabled successfully
+        '400':
+          description: MFA not enabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: mfa not enabled
+                code: MFA_NOT_ENABLED
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/mfa/totp/verify:
+    post:
+      operationId: verifyTOTP
+      tags: [MFA]
+      summary: Verify TOTP code to complete login
+      description: |
+        Completes MFA login by verifying a 6-digit TOTP code against the MFA token
+        received from the login endpoint.
+
+        **Rate limit:** per IP, sliding window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAVerifyRequest'
+            example:
+              mfa_token: mfa_550e8400-e29b-41d4-a716-446655440000
+              code: "123456"
+      responses:
+        '200':
+          description: MFA verification successful, tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairWithTypeResponse'
+              example:
+                access_token: eyJhbGciOiJFZERTQSIs...
+                refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+                expires_in: 900
+                token_type: Bearer
+        '401':
+          description: Invalid MFA token or TOTP code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_mfa_token:
+                  summary: Invalid or expired MFA token
+                  value:
+                    error: invalid or expired mfa token
+                    code: INVALID_MFA_TOKEN
+                invalid_totp:
+                  summary: Invalid TOTP code
+                  value:
+                    error: invalid totp code
+                    code: INVALID_TOTP_CODE
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/mfa/recovery/verify:
+    post:
+      operationId: verifyRecoveryCode
+      tags: [MFA]
+      summary: Verify recovery code to complete login
+      description: |
+        Completes MFA login using a one-time recovery code.
+        Each recovery code can only be used once.
+
+        **Rate limit:** per IP, sliding window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MFAVerifyRequest'
+            example:
+              mfa_token: mfa_550e8400-e29b-41d4-a716-446655440000
+              code: abc12-def34
+      responses:
+        '200':
+          description: Recovery code accepted, tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairWithTypeResponse'
+              example:
+                access_token: eyJhbGciOiJFZERTQSIs...
+                refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+                expires_in: 900
+                token_type: Bearer
+        '401':
+          description: Invalid MFA token or recovery code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_mfa_token:
+                  summary: Invalid or expired MFA token
+                  value:
+                    error: invalid or expired mfa token
+                    code: INVALID_MFA_TOKEN
+                invalid_recovery:
+                  summary: Invalid recovery code
+                  value:
+                    error: invalid recovery code
+                    code: INVALID_RECOVERY_CODE
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── Magic Link ────────────────────────────
+  /api/v1/auth/magic-link/request:
+    post:
+      operationId: requestMagicLink
+      tags: [Magic Link]
+      summary: Request a magic link
+      description: |
+        Sends a passwordless login link to the provided email.
+        Always returns success to avoid user enumeration.
+
+        **Rate limit:** per IP, sliding window.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequest'
+            example:
+              email: user@example.com
+      responses:
+        '200':
+          description: Magic link sent (if account exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: if the email exists, a magic link has been sent
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/magic-link/verify:
+    post:
+      operationId: verifyMagicLink
+      tags: [Magic Link]
+      summary: Verify magic link token
+      description: Authenticates a user via the magic link token from the email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            example:
+              token: ml_550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPairWithTypeResponse'
+              example:
+                access_token: eyJhbGciOiJFZERTQSIs...
+                refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+                expires_in: 900
+                token_type: Bearer
+        '401':
+          description: Invalid or expired magic link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid or expired magic link
+                code: INVALID_MAGIC_LINK
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── OAuth 2.0 ────────────────────────────
+  /api/v1/oauth/authorize:
+    get:
+      operationId: oauthAuthorize
+      tags: [OAuth]
+      summary: OAuth 2.0 authorization endpoint
+      description: |
+        Initiates the OAuth 2.0 Authorization Code flow with PKCE (RFC 7636).
+        Redirects the user to the `redirect_uri` with an authorization code on success,
+        or with an error parameter on failure.
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The OAuth client identifier
+          example: my-client-id
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: URI to redirect the user after authorization
+          example: https://app.example.com/callback
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+          description: Must be `code`
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Base64url-encoded SHA-256 hash of the code verifier (RFC 7636)
+          example: E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [S256]
+          description: Must be `S256`
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Space-separated list of requested scopes
+          example: openid profile email
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque value for CSRF protection (recommended)
+          example: xyzABC123
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authenticated user's ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '302':
+          description: Redirect to `redirect_uri` with authorization code or error
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Redirect URL with `code` and `state` parameters
+        '400':
+          description: Pre-redirect validation error (invalid client_id or redirect_uri)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_client:
+                  summary: Invalid client_id
+                  value:
+                    error: invalid client_id
+                    code: INVALID_CLIENT
+                invalid_redirect:
+                  summary: Invalid redirect_uri
+                  value:
+                    error: invalid redirect_uri
+                    code: INVALID_REDIRECT_URI
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/oauth/token:
+    post:
+      operationId: oauthToken
+      tags: [OAuth]
+      summary: OAuth 2.0 token endpoint
+      description: |
+        Exchanges an authorization code for tokens (Authorization Code grant)
+        or refreshes tokens (Refresh Token grant).
+
+        Client authentication via HTTP Basic (`client_id:client_secret`) or
+        form parameters (`client_id`, `client_secret`).
+      security:
+        - BasicAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token]
+                  description: OAuth grant type
+                code:
+                  type: string
+                  description: Authorization code (required for `authorization_code` grant)
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: Must match the original authorize request (required for `authorization_code` grant)
+                code_verifier:
+                  type: string
+                  description: PKCE code verifier (required for `authorization_code` grant)
+                refresh_token:
+                  type: string
+                  description: Refresh token (required for `refresh_token` grant)
+                client_id:
+                  type: string
+                  description: Client identifier (alternative to Basic auth)
+                client_secret:
+                  type: string
+                  description: Client secret (alternative to Basic auth)
+            examples:
+              authorization_code:
+                summary: Authorization code exchange
+                value:
+                  grant_type: authorization_code
+                  code: auth_code_abc123
+                  redirect_uri: https://app.example.com/callback
+                  code_verifier: dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+                  client_id: my-client-id
+                  client_secret: my-client-secret
+              refresh_token:
+                summary: Refresh token exchange
+                value:
+                  grant_type: refresh_token
+                  refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+                  client_id: my-client-id
+                  client_secret: my-client-secret
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthTokenResponse'
+              example:
+                access_token: eyJhbGciOiJFZERTQSIs...
+                token_type: Bearer
+                expires_in: 900
+                refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+        '400':
+          description: Invalid grant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthErrorResponse'
+              examples:
+                invalid_code:
+                  summary: Invalid authorization code
+                  value:
+                    error: invalid_grant
+                    error_description: authorization code is invalid, expired, or already used
+                expired_refresh:
+                  summary: Expired refresh token
+                  value:
+                    error: invalid_grant
+                    error_description: refresh token has expired
+                revoked_refresh:
+                  summary: Revoked refresh token
+                  value:
+                    error: invalid_grant
+                    error_description: refresh token has been revoked
+        '401':
+          description: Client authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthErrorResponse'
+              example:
+                error: invalid_client
+                error_description: client authentication failed
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/oauth/revoke:
+    post:
+      operationId: oauthRevoke
+      tags: [OAuth]
+      summary: Revoke an OAuth token (RFC 7009)
+      description: |
+        Revokes an access or refresh token. Always returns 200 OK per RFC 7009,
+        even for invalid or unknown tokens.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: The token to revoke
+                token_type_hint:
+                  type: string
+                  enum: [access_token, refresh_token]
+                  description: Hint about the token type
+            example:
+              token: dGhpcyBpcyBhIHJlZnJlc2g...
+              token_type_hint: refresh_token
+      responses:
+        '200':
+          description: Token revoked (or was already invalid)
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Pragma:
+              schema:
+                type: string
+                example: no-cache
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthErrorResponse'
+              example:
+                error: invalid_request
+                error_description: token parameter is required
+
+  /api/v1/oauth/userinfo:
+    post:
+      operationId: getUserInfo
+      tags: [UserInfo]
+      summary: Get authenticated user info (OIDC)
+      description: Returns claims about the authenticated user. Requires a valid access token.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User info returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfoResponse'
+              example:
+                sub: 550e8400-e29b-41d4-a716-446655440000
+                email: user@example.com
+                email_verified: true
+        '401':
+          description: Invalid or expired access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_token:
+                  summary: Invalid access token
+                  value:
+                    error: invalid token
+                    code: INVALID_TOKEN
+                expired_token:
+                  summary: Expired access token
+                  value:
+                    error: token expired
+                    code: TOKEN_EXPIRED
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+              example: 'Bearer realm="sso", error="invalid_token", error_description="The access token is invalid"'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── Client ────────────────────────────
+  /api/v1/oauth/clients:
+    post:
+      operationId: createClient
+      tags: [Client]
+      summary: Register a new OAuth client
+      description: Creates a new OAuth client and returns the generated client_id and client_secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientRequest'
+            example:
+              name: My Application
+              redirect_uris:
+                - https://app.example.com/callback
+              allowed_scopes:
+                - openid
+                - profile
+                - email
+              is_confidential: true
+      responses:
+        '201':
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateClientResponse'
+              example:
+                client_id: cli_550e8400-e29b-41d4-a716-446655440000
+                client_secret: sec_dGhpcyBpcyBhIHNlY3JldA...
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/oauth/clients/{id}:
+    get:
+      operationId: getClient
+      tags: [Client]
+      summary: Get OAuth client by ID
+      description: Returns the public details of an OAuth client.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: OAuth client ID
+          example: cli_550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Client found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientResponse'
+              example:
+                client_id: cli_550e8400-e29b-41d4-a716-446655440000
+                name: My Application
+                redirect_uris:
+                  - https://app.example.com/callback
+                allowed_scopes:
+                  - openid
+                  - profile
+                  - email
+                is_confidential: true
+        '404':
+          description: Client not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: client not found
+                code: CLIENT_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── Federation ────────────────────────────
+  /api/v1/federation/{provider}/authorize:
+    get:
+      operationId: federationAuthorize
+      tags: [Federation]
+      summary: Initiate federated login
+      description: Redirects the user to the external identity provider's authorization page.
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+      responses:
+        '302':
+          description: Redirect to external provider
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Provider's authorization URL
+        '404':
+          description: Unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: unknown identity provider
+                code: PROVIDER_NOT_FOUND
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/federation/{provider}/callback:
+    get:
+      operationId: federationCallback
+      tags: [Federation]
+      summary: Handle provider OAuth callback
+      description: |
+        Processes the callback from the external identity provider,
+        exchanges the authorization code for tokens, and returns SSO tokens.
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authorization code from the provider
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: State parameter for CSRF protection
+        - name: error
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Error code if the provider returned an error
+        - name: error_description
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Error description from the provider
+      responses:
+        '200':
+          description: Federation login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthTokenResponse'
+              example:
+                access_token: eyJhbGciOiJFZERTQSIs...
+                token_type: Bearer
+                expires_in: 900
+                refresh_token: dGhpcyBpcyBhIHJlZnJlc2g...
+        '400':
+          description: Invalid request or provider error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_code:
+                  summary: Missing authorization code
+                  value:
+                    error: code/state is required
+                    code: INVALID_REQUEST
+                invalid_state:
+                  summary: Invalid or expired state
+                  value:
+                    error: invalid or expired OAuth state
+                    code: INVALID_STATE
+        '403':
+          description: Provider email not verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: provider email is not verified
+                code: EMAIL_NOT_VERIFIED
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ──────────────────────────── OIDC Discovery ────────────────────────────
+  /.well-known/openid-configuration:
+    get:
+      operationId: oidcDiscovery
+      tags: [OIDC Discovery]
+      summary: OpenID Connect discovery document
+      description: Returns the OpenID Connect Provider configuration (RFC 8414).
+      responses:
+        '200':
+          description: Discovery document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscoveryResponse'
+              example:
+                issuer: https://sso.example.com
+                authorization_endpoint: https://sso.example.com/api/v1/oauth/authorize
+                token_endpoint: https://sso.example.com/api/v1/oauth/token
+                revocation_endpoint: https://sso.example.com/api/v1/oauth/revoke
+                jwks_uri: https://sso.example.com/.well-known/jwks.json
+                userinfo_endpoint: https://sso.example.com/api/v1/oauth/userinfo
+                response_types_supported: [code]
+                grant_types_supported: [authorization_code, refresh_token]
+                subject_types_supported: [public]
+                id_token_signing_alg_values_supported: [EdDSA]
+                token_endpoint_auth_methods_supported: [client_secret_basic, client_secret_post]
+                revocation_endpoint_auth_methods_supported: [none]
+                scopes_supported: [openid, profile, email, offline_access]
+                claims_supported: [sub, iss, aud, exp, iat, email, email_verified]
+                code_challenge_methods_supported: [S256]
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /.well-known/jwks.json:
+    get:
+      operationId: jwks
+      tags: [OIDC Discovery]
+      summary: JSON Web Key Set
+      description: Returns the public keys used to verify JWT signatures.
+      responses:
+        '200':
+          description: JWKS document
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: "public, max-age=3600"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKSResponse'
+              example:
+                keys:
+                  - kty: OKP
+                    crv: Ed25519
+                    x: 11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo
+                    use: sig
+                    alg: EdDSA
+                    kid: key-2024-01
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ──────────────────────────── Health ────────────────────────────
+  /healthz:
+    get:
+      operationId: liveness
+      tags: [Health]
+      summary: Liveness probe
+      description: Returns 200 if the service process is alive.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /readyz:
+    get:
+      operationId: readiness
+      tags: [Health]
+      summary: Readiness probe
+      description: Returns 200 if the service and its dependencies (PostgreSQL, Redis) are ready.
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                status: ready
+                checks:
+                  postgres: ok
+                  redis: ok
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                status: not_ready
+                checks:
+                  postgres: "error: connection refused"
+                  redis: ok
+
+components:
+  # ──────────────────────────── Security Schemes ────────────────────────────
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from login, magic link, or OAuth token endpoints
+    BasicAuth:
+      type: http
+      scheme: basic
+      description: HTTP Basic with `client_id:client_secret` for OAuth token endpoint
+
+  # ──────────────────────────── Parameters ────────────────────────────
+  parameters:
+    Provider:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [google, github]
+      description: Identity provider name
+      example: google
+
+  # ──────────────────────────── Reusable Responses ────────────────────────────
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: invalid request body
+            code: VALIDATION_ERROR
+    Unauthorized:
+      description: Missing or invalid access token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: invalid token
+            code: INVALID_TOKEN
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: 'Bearer realm="sso"'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: not found
+            code: NOT_FOUND
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: too many requests
+            code: RATE_LIMITED
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+          example: 60
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: internal server error
+            code: INTERNAL_ERROR
+
+  # ──────────────────────────── Schemas ────────────────────────────
+  schemas:
+    # ── Requests ──
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: User password
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    TokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: Verification or magic link token
+
+    EmailRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+          description: Password reset token
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          description: New password
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh token
+
+    CodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: 6-digit TOTP code or recovery code
+
+    MFAVerifyRequest:
+      type: object
+      required: [mfa_token, code]
+      properties:
+        mfa_token:
+          type: string
+          description: MFA challenge token from login response
+        code:
+          type: string
+          description: 6-digit TOTP code or recovery code
+
+    CreateClientRequest:
+      type: object
+      required: [name, redirect_uris]
+      properties:
+        name:
+          type: string
+          description: Human-readable client name
+        redirect_uris:
+          type: array
+          items:
+            type: string
+            format: uri
+          minItems: 1
+          description: Allowed redirect URIs
+        allowed_scopes:
+          type: array
+          items:
+            type: string
+          description: Scopes the client is allowed to request
+        is_confidential:
+          type: boolean
+          description: Whether the client can keep a secret (server-side app)
+
+    # ── Responses ──
+    RegisterResponse:
+      type: object
+      required: [user_id, message]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Newly created user ID
+        message:
+          type: string
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+
+    TokenPairResponse:
+      type: object
+      required: [access_token, refresh_token, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        refresh_token:
+          type: string
+          description: Opaque refresh token
+        expires_in:
+          type: integer
+          format: int64
+          description: Access token TTL in seconds
+
+    TokenPairWithTypeResponse:
+      type: object
+      required: [access_token, refresh_token, expires_in, token_type]
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        refresh_token:
+          type: string
+          description: Opaque refresh token
+        expires_in:
+          type: integer
+          format: int64
+          description: Access token TTL in seconds
+        token_type:
+          type: string
+          enum: [Bearer]
+
+    OAuthTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: JWT access token
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+          format: int64
+          description: Access token TTL in seconds
+        refresh_token:
+          type: string
+          description: Refresh token (may be omitted)
+
+    MFAChallengeResponse:
+      type: object
+      required: [mfa_required, mfa_token]
+      properties:
+        mfa_required:
+          type: boolean
+          enum: [true]
+        mfa_token:
+          type: string
+          description: Temporary token to complete MFA verification
+
+    SetupTOTPResponse:
+      type: object
+      required: [secret_uri]
+      properties:
+        secret_uri:
+          type: string
+          description: "otpauth:// URI for QR code generation"
+
+    VerifySetupResponse:
+      type: object
+      required: [recovery_codes]
+      properties:
+        recovery_codes:
+          type: array
+          items:
+            type: string
+          description: One-time recovery codes (store securely)
+
+    UserInfoResponse:
+      type: object
+      required: [sub, email, email_verified]
+      properties:
+        sub:
+          type: string
+          description: User ID (subject)
+        email:
+          type: string
+          format: email
+        email_verified:
+          type: boolean
+
+    ClientResponse:
+      type: object
+      required: [client_id, name, redirect_uris, allowed_scopes, is_confidential]
+      properties:
+        client_id:
+          type: string
+        name:
+          type: string
+        redirect_uris:
+          type: array
+          items:
+            type: string
+            format: uri
+        allowed_scopes:
+          type: array
+          items:
+            type: string
+        is_confidential:
+          type: boolean
+
+    CreateClientResponse:
+      type: object
+      required: [client_id, client_secret]
+      properties:
+        client_id:
+          type: string
+        client_secret:
+          type: string
+          description: Show only once; cannot be retrieved later
+
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    ReadyResponse:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ready, not_ready]
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          description: Dependency health check results
+
+    DiscoveryResponse:
+      type: object
+      required:
+        - issuer
+        - authorization_endpoint
+        - token_endpoint
+        - jwks_uri
+        - response_types_supported
+        - subject_types_supported
+        - id_token_signing_alg_values_supported
+      properties:
+        issuer:
+          type: string
+          format: uri
+        authorization_endpoint:
+          type: string
+          format: uri
+        token_endpoint:
+          type: string
+          format: uri
+        revocation_endpoint:
+          type: string
+          format: uri
+        jwks_uri:
+          type: string
+          format: uri
+        userinfo_endpoint:
+          type: string
+          format: uri
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        grant_types_supported:
+          type: array
+          items:
+            type: string
+        subject_types_supported:
+          type: array
+          items:
+            type: string
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+        token_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+        revocation_endpoint_auth_methods_supported:
+          type: array
+          items:
+            type: string
+        scopes_supported:
+          type: array
+          items:
+            type: string
+        claims_supported:
+          type: array
+          items:
+            type: string
+        code_challenge_methods_supported:
+          type: array
+          items:
+            type: string
+
+    JWKSResponse:
+      type: object
+      required: [keys]
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty:
+                type: string
+                description: Key type
+              crv:
+                type: string
+                description: Curve name
+              x:
+                type: string
+                description: Public key (base64url)
+              use:
+                type: string
+                enum: [sig]
+              alg:
+                type: string
+                description: Algorithm
+              kid:
+                type: string
+                description: Key ID
+
+    ErrorResponse:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+
+    OAuthErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: OAuth error code (RFC 6749)
+        error_description:
+          type: string
+          description: Human-readable error description
